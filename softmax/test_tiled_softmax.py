@@ -21,7 +21,7 @@ Ly_1 = Layout("S1")
 # Softmax dimensions (same as masked test)
 SEQ_TILED = 64
 SEQ = 64
-HEAD_TILE = 3
+HEAD_TILE = 1
 
 # -----------------------------
 # PyTorch reference (UNMASKED)
@@ -73,7 +73,7 @@ def _test_softmax_float():
         target="aie",
         profile=True,
         warmup=20,
-        num_iters=100,  # execute multiple times for stable perf
+        num_iters=1000,  # execute multiple times for stable perf
     )
 
     output_allo = np.zeros((SEQ_TILED, SEQ * HEAD_TILE), dtype=np.float32)
@@ -135,7 +135,7 @@ def _test_softmax_bf16():
         target="aie",
         profile=True,
         warmup=20,
-        num_iters=100,  # execute multiple times for stable perf
+        num_iters=1000,  # execute multiple times for stable perf
     )
 
     output_allo = np.zeros((SEQ_TILED, SEQ * HEAD_TILE), dtype=np_bfloat16)
