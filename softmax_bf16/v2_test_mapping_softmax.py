@@ -30,7 +30,7 @@ def test_mapping_softmax_4_1024():
 
     softmax = ExternalModule(
         top="softmax_bf16",
-        impl_path=KERNEL_LIB_PATH + "softmax_bf16.cc",
+        impl_path=KERNEL_LIB_PATH + "v2_softmax_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
@@ -109,7 +109,7 @@ def test_mapping_softmax_8_512():
 
     softmax = ExternalModule(
         top="softmax_bf16_8_512",
-        impl_path=KERNEL_LIB_PATH + "softmax_bf16.cc",
+        impl_path=KERNEL_LIB_PATH + "v2_softmax_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
@@ -188,7 +188,7 @@ def test_mapping_softmax_16_256():
 
     softmax = ExternalModule(
         top="softmax_bf16_16_256",
-        impl_path=KERNEL_LIB_PATH + "softmax_bf16.cc",
+        impl_path=KERNEL_LIB_PATH + "v2_softmax_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
@@ -267,7 +267,7 @@ def test_mapping_softmax_32_128():
 
     softmax = ExternalModule(
         top="softmax_bf16_32_128",
-        impl_path=KERNEL_LIB_PATH + "softmax_bf16.cc",
+        impl_path=KERNEL_LIB_PATH + "v2_softmax_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
@@ -347,7 +347,7 @@ def test_mapping_softmax_64_64():
 
     softmax = ExternalModule(
         top="softmax_bf16_64_64",
-        impl_path=KERNEL_LIB_PATH + "softmax_bf16.cc",
+        impl_path=KERNEL_LIB_PATH + "v2_softmax_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
@@ -416,8 +416,8 @@ def test_mapping_softmax_64_64():
 
 
 if __name__ == "__main__":
-    # test_mapping_softmax_4_1024()
+    test_mapping_softmax_4_1024()
     # test_mapping_softmax_8_512()
     # test_mapping_softmax_16_256()
-    test_mapping_softmax_32_128()
+    # test_mapping_softmax_32_128()
     # test_mapping_softmax_64_64()
