@@ -171,14 +171,3 @@ if __name__ == "__main__":
 
 
     test_tiled_gemm(M, N, K, bfloat16, bfloat16) # 
-
-# ==== Error with bf16 ====
-#     Error: Invalid input file, byte number mismatch.
-# Traceback (most recent call last):
-#   File "/home/jl4257/vla_npu_kernel/gemm/test_tiled_gemm.py", line 137, in <module>
-#     test_tiled_gemm(M, N, K, bfloat16, bfloat16)
-#   File "/home/jl4257/vla_npu_kernel/gemm/test_tiled_gemm.py", line 109, in test_tiled_gemm
-#     linear_accumulate_mod(
-#   File "/home/jl4257/allo/allo/backend/aie/__init__.py", line 811, in __call__
-#     raise RuntimeError("Failed to execute AIE code.")
-# RuntimeError: Failed to execute AIE code.

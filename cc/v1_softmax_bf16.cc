@@ -60,13 +60,54 @@ static inline bfloat16 get_exp(bfloat16 x) {
   }
 }
 
-// ===================== UNMASKED =====================
-// Same structure as masked kernel, just no causal masking and
-// tile_row_start is ignored (kept for ABI compatibility).
 extern "C" {
 
-void softmax_bf16(bfloat16 attention_score[32][64],
-                     int tile_row_start[1],
+void softmax_bf16_64_64(bfloat16 attention_score[64][64],
+                     bfloat16 attn_weights[64][64]) {
+  constexpr int TILE_ROWS = 64;
+  constexpr int SEQ_COLS  = 64;
+  constexpr int VEC_SIZE  = 32;
+
+  for (int r = 0; r < TILE_ROWS; ++r) {
+    bfloat16* __restrict in_row  = &attention_score[r][0];
+    bfloat16* __restrict out_row = &attn_weights[r][0];
+
+    // Load two 32-wide vectors (64 columns total)
+    aie::vector<bfloat16, VEC_SIZE> v0 = aie::load_v<VEC_SIZE>(in_row);
+    aie::vector<bfloat16, VEC_SIZE> v1 = aie::load_v<VEC_SIZE>(in_row + VEC_SIZE);
+
+    // Row-wise max (log-sum-exp)
+    bfloat16 row_max = aie::reduce_max(v0);
+    row_max = std::max(row_max, aie::reduce_max(v1));
+
+    v0 = aie::add(v0, -row_max);
+    v1 = aie::add(v1, -row_max);
+
+    // Exp and sum (same LUT-based approximation)
+    bfloat16 sum_exp = 0.0f;
+    for (int k = 0; k < VEC_SIZE; ++k) {
+      bfloat16 e = get_exp(v0[k]);
+      sum_exp += e;
+      out_row[k] = e;
+    }
+    for (int k = 0; k < VEC_SIZE; ++k) {
+      bfloat16 e = get_exp(v1[k]);
+      sum_exp += e;
+      out_row[VEC_SIZE + k] = e;
+    }
+
+    // Normalize
+    bfloat16 inv = 1.0f / sum_exp;
+    aie::vector<bfloat16, VEC_SIZE> w0 = aie::load_v<VEC_SIZE>(out_row);
+    aie::vector<bfloat16, VEC_SIZE> w1 = aie::load_v<VEC_SIZE>(out_row + VEC_SIZE);
+    w0 = aie::mul(w0, inv);
+    w1 = aie::mul(w1, inv);
+    aie::store_v(out_row,                w0);
+    aie::store_v(out_row + VEC_SIZE,     w1);
+  }
+}
+
+void softmax_bf16_32_64(bfloat16 attention_score[32][64],
                      bfloat16 attn_weights[32][64]) {
   constexpr int TILE_ROWS = 32;
   constexpr int SEQ_COLS  = 64;
@@ -110,5 +151,4 @@ void softmax_bf16(bfloat16 attention_score[32][64],
     aie::store_v(out_row + VEC_SIZE,     w1);
   }
 }
-
 }

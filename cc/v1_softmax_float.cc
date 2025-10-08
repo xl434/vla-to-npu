@@ -8,11 +8,12 @@
 #include <stdlib.h>
 #include <type_traits>
 #define NOCPP
-#include <limits>
 
 // Constants for exp(x) = 2^(x * log2(e))
+// log2(e) = 1 / ln(2) = 1.4426950408889634
+// ln(2) = 0.6931471805599453
 constexpr float LOG2E_F = 1.4426950408889634f;
-constexpr float LN2_F   = 0.6931471805599453f;
+constexpr float LN2_F = 0.6931471805599453f;
 
 const float lut_data[] = {
     5.87747e-39f, 1.17549e-38f, 2.35099e-38f, 4.70198e-38f, 9.40395e-38f,
@@ -42,31 +43,33 @@ const float lut_data[] = {
     7.81250e-03f, 1.56250e-02f, 3.12500e-02f, 6.25000e-02f, 1.25000e-01f,
     2.50000e-01f, 5.00000e-01f, 1.00000e+00f};
 
-static inline float get_exp(float x) {
+float get_exp(float x) {
   if (x < -80.0f) {
     return 0.0f;
   } else {
     float y = x * LOG2E_F;
     int I = static_cast<int>(y);
-    if (y < 0.0f && y != static_cast<float>(I)) { I--; }
+    if (y < 0.0f && y != static_cast<float>(I)) {
+      I--;
+    }
     float F = y - static_cast<float>(I);
     float pow2_I;
-    if (I < -127)      pow2_I = 0.0f;
-    else if (I > 0)    pow2_I = lut_data[127];  // I=0
-    else               pow2_I = lut_data[I + 127];
+    if (I < -127) {
+      pow2_I = 0.0f; // Below table range, effectively zero
+    } else if (I > 0) {
+      pow2_I = lut_data[127]; // Index 127 corresponds to I=0
+    } else {                  // I is in [-127, 0]
+      pow2_I = lut_data[I + 127];
+    }
     float F2 = F * F;
     float poly_2_pow_F = (1.0f - LN2_F) * F2 + LN2_F * F + 1.0f;
     return float(pow2_I * poly_2_pow_F);
   }
 }
 
-// ===================== UNMASKED =====================
-// Same structure as masked kernel, just no causal masking and
-// tile_row_start is ignored (kept for ABI compatibility).
 extern "C" {
 
 void softmax_float32(float attention_score[32][64],
-                     int tile_row_start[1],
                      float attn_weights[32][64]) {
   constexpr int TILE_ROWS = 32;
   constexpr int SEQ_COLS  = 64;
@@ -110,51 +113,4 @@ void softmax_float32(float attention_score[32][64],
     aie::store_v(out_row + VEC_SIZE,     w1);
   }
 }
-
-// void softmax_bf16(bfloat16 attention_score[32][64],
-//                      int tile_row_start[1],
-//                      bfloat16 attn_weights[32][64]) {
-//   constexpr int TILE_ROWS = 32;
-//   constexpr int SEQ_COLS  = 64;
-//   constexpr int VEC_SIZE  = 32;
-
-//   for (int r = 0; r < TILE_ROWS; ++r) {
-//     bfloat16* __restrict in_row  = &attention_score[r][0];
-//     bfloat16* __restrict out_row = &attn_weights[r][0];
-
-//     // Load two 32-wide vectors (64 columns total)
-//     aie::vector<bfloat16, VEC_SIZE> v0 = aie::load_v<VEC_SIZE>(in_row);
-//     aie::vector<bfloat16, VEC_SIZE> v1 = aie::load_v<VEC_SIZE>(in_row + VEC_SIZE);
-
-//     // Row-wise max (log-sum-exp)
-//     bfloat16 row_max = aie::reduce_max(v0);
-//     row_max = std::max(row_max, aie::reduce_max(v1));
-
-//     v0 = aie::add(v0, -row_max);
-//     v1 = aie::add(v1, -row_max);
-
-//     // Exp and sum (same LUT-based approximation)
-//     bfloat16 sum_exp = 0.0f;
-//     for (int k = 0; k < VEC_SIZE; ++k) {
-//       bfloat16 e = get_exp(v0[k]);
-//       sum_exp += e;
-//       out_row[k] = e;
-//     }
-//     for (int k = 0; k < VEC_SIZE; ++k) {
-//       bfloat16 e = get_exp(v1[k]);
-//       sum_exp += e;
-//       out_row[VEC_SIZE + k] = e;
-//     }
-
-//     // Normalize
-//     bfloat16 inv = 1.0f / sum_exp;
-//     aie::vector<bfloat16, VEC_SIZE> w0 = aie::load_v<VEC_SIZE>(out_row);
-//     aie::vector<bfloat16, VEC_SIZE> w1 = aie::load_v<VEC_SIZE>(out_row + VEC_SIZE);
-//     w0 = aie::mul(w0, inv);
-//     w1 = aie::mul(w1, inv);
-//     aie::store_v(out_row,                w0);
-//     aie::store_v(out_row + VEC_SIZE,     w1);
-//   }
-// }
-
-}
+} // extern "C"
