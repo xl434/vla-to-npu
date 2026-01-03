@@ -36,7 +36,7 @@ import torch.nn.functional as F
 import numpy as np
 import allo
 import allo.dataflow as df
-from allo.ir.types import float32, bfloat16, int32
+from allo.ir.types import float32, int32, Stream
 from allo.memory import Layout
 from allo.backend.aie import ExternalModule
 import time
@@ -107,7 +107,6 @@ Ty = float32  # All tensors use float32
 N = BATCH * SEQ  # 16   flattened (batch*seq)
 # ----------------------------------------------------------------
 # LayerNorm
-# ----------------------------------------------------------------
 norm = ExternalModule(
     top="layer_norm",
     impl_path=KERNEL_LIB_PATH + "layer_norm.cc",
@@ -121,29 +120,32 @@ norm_io_layout = Layout("S0R")
 norm_arg_layout = Layout("R")
 
 @df.region()
-def layer_norm_kernel():
-    pipe = df.array(
-        df.pipe(dtype=Ty, shape=(NORM_TILE, EMBD), depth=1), shape=(NORM_P0,)
-    )
+def layer_norm_kernel(
+    input_x: Ty[NORM_SEQ_TILE, EMBD],
+    weight: Ty[EMBD],
+    bias: Ty[EMBD],
+    output_x: Ty[NORM_SEQ_TILE, EMBD],
+):
+    pipe: Stream[Ty[NORM_TILE, EMBD], 1][NORM_P0]
 
-    @df.kernel(mapping=[NORM_P0])
+    @df.kernel(mapping=[NORM_P0], args=[input_x, weight])
     def norm_no_bias(
-        input_x: Ty[NORM_SEQ_TILE, EMBD] @ norm_io_layout,
-        weight: Ty[EMBD] @ norm_arg_layout,
+        local_input_x: Ty[NORM_SEQ_TILE, EMBD] @ norm_io_layout,
+        local_weight: Ty[EMBD] @ norm_arg_layout,
     ):
         pi = df.get_pid()
         tmp: Ty[NORM_TILE, EMBD] = 0
-        norm(input_x, weight, tmp)
+        norm(local_input_x, local_weight, tmp)
         pipe[pi].put(tmp)
 
-    @df.kernel(mapping=[NORM_P0])
+    @df.kernel(mapping=[NORM_P0], args=[bias, output_x])
     def norm_add_bias(
-        bias: Ty[EMBD] @ norm_arg_layout,
-        output_x: Ty[NORM_SEQ_TILE, EMBD] @ norm_io_layout,
+        local_bias: Ty[EMBD] @ norm_arg_layout,
+        local_output_x: Ty[NORM_SEQ_TILE, EMBD] @ norm_io_layout,
     ):
         pi = df.get_pid()
         data = pipe[pi].get()
-        output_x[:, :] = allo.add(data, bias)
+        local_output_x[:, :] = allo.add(data, local_bias)
 
 # ----------------------------------------------------------------
 # Linear
@@ -205,7 +207,7 @@ def attn_score_kernel():
 # ----------------------------------------------------------------
 softmax = ExternalModule(
     top="softmax_float32",
-    impl_path=KERNEL_LIB_PATH + "softmax.cc",
+    impl_path=KERNEL_LIB_PATH + "v1_softmax_float.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )

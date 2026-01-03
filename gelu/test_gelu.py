@@ -10,9 +10,8 @@ import allo.dataflow as df
 import numpy as np
 from allo.memory import Layout
 from allo.backend.aie.external_kernel import ExternalModule
-from allo.ir.types import float32
 
-KERNEL_LIB_PATH = "cc/"
+KERNEL_LIB_PATH = "../cc/"
 
 Ly = Layout("S0S1")
 Ty = float32

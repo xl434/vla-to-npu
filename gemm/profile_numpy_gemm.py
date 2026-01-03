@@ -7,6 +7,8 @@ Profiles numpy matrix multiplication with configurable dimensions and data types
 
 Example usage: 
 python profile_numpy_gemm.py --M 64 --N 960 --K 768 --dtype bfloat16
+python profile_numpy_gemm.py --M 512 --N 512 --K 512 --dtype bfloat16
+
 """
 
 import numpy as np

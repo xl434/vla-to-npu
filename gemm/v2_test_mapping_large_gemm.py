@@ -1,15 +1,15 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# from: https://github.com/cornell-zhang/allo/blob/main/tests/dataflow/aie/test_mapping_large_gemm.py
-
 import os
 import allo
-from allo.ir.types import int8, int16, bfloat16
+from allo.ir.types import int8, int16, bfloat16, Stream
 import allo.dataflow as df
 import numpy as np
 from allo.memory import Layout
 from ml_dtypes import bfloat16 as np_bfloat16
+import timeit
+import time
 
 COL_NUM = 8 if os.getenv("NPU2") == "1" else 4
 
@@ -55,25 +55,25 @@ def _test_pingpong_gemm(M, N, K, Pm, Pn, Pk, TyI, TyO):
 
     @df.region()
     def top():
-        pipe = df.array(
-            df.pipe(dtype=TyO, shape=(Mt, Nt), depth=2), shape=(Pk - 1, Pm, Pn)
-        )
+        pipe: Stream[TyO[Mt, Nt], 2][Pk - 1, Pm, Pn]
 
         @df.kernel(mapping=[Pk, Pm, Pn])
         def gemm(A: TyI[M, K] @ LyA, B: TyI[K, N] @ LyB, C: TyO[M, N] @ LyC):
             pk, pm, pn = df.get_pid()
+            C_in: TyO[Mt, Nt]
             with allo.meta_if(pk > 0):
-                C_in: TyO[Mt, Nt] = pipe[pk - 1, pm, pn].get()
+                C_in[:, :] = pipe[pk - 1, pm, pn].get()
             with allo.meta_else():
-                C_in: TyO[Mt, Nt] = 0
+                C_in[:, :] = 0
             C_out: TyO[Mt, Nt] = allo.add(allo.matmul(A, B), C_in)
             with allo.meta_if(pk < Pk - 1):
                 pipe[pk, pm, pn].put(C_out)
             with allo.meta_elif(pk == Pk - 1):
                 C[:, :] = C_out
-
+    print('mapping primitives')
     mapping_primitives = gen_gemm_mapping_primitive(Pm, Pn, Pk)
-
+    
+    print('building mod')
     mod = df.build(
         top,
         project="top.prj",
@@ -84,6 +84,7 @@ def _test_pingpong_gemm(M, N, K, Pm, Pn, Pk, TyI, TyO):
         num_iters=1000,
         device_type="npu1_4col",
     )
+    print('successfully built mod')
     if TyI is bfloat16:
         A = (np.random.random((M, K)) * 0.1).astype(np_bfloat16)
         B = (np.random.random((K, N)) * 0.1).astype(np_bfloat16)
@@ -105,18 +106,23 @@ def _test_pingpong_gemm(M, N, K, Pm, Pn, Pk, TyI, TyO):
         )
     else:
         np.testing.assert_allclose(C, A @ B, atol=1e-5)
+
+    print("CPU timer 1: ", timeit.timeit(lambda: A @ B, number=100)/100)
+    start_time = time.perf_counter()
+    C = A @ B
+    end_time = time.perf_counter()
+    print("CPU timer 2: ", end_time - start_time)
     print("PASSED!")
 
 
 if __name__ == "__main__":
-    # M, N, K = 2048, 2048, 2048
-    M, N, K = 64, 960, 768
+    M, N, K = 512, 512, 512
     m, n, k = 64, 64, 64
     # - i8
-    # _test_pingpong_gemm(M, N, K, M // m, N // n, K // k, int8, int8)
+    _test_pingpong_gemm(M, N, K, M // m, N // n, K // k, int8, int8)
 
-    # # - i16
-    # _test_pingpong_gemm(M, N, K, M // m, N // n, K // k, int16, int16)
+    # - i16
+    _test_pingpong_gemm(M, N, K, M // m, N // n, K // k, int16, int16)
 
     # - bf16
     try:
