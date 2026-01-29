@@ -18,7 +18,7 @@ np.random.seed(0)
 
 # ===============================================================================
 # Model Configuration
-# ===============================================================================
+# ================================p===============================================
 USE_ALL_NPU_KERNELS = True  # if False, we will offload softmax and silu to cpu
 KERNEL_LIB_PATH = "../cc/"
 BATCH = 1  # fixme: don't care for now
@@ -79,17 +79,17 @@ def test_tiled_gemm(M, N, K, TyI, TyO):
         linear_matmul_kernel, 
         target="aie", 
         project="llama/linear_matmul.prj",
-        profile=True,
-        warmup=20,
-        num_iters=100,
+        profile=False,
+        # warmup=200,
+        # num_iters=1000,
     )
     linear_accumulate_mod = df.build(
         linear_accumulate_kernel, 
         target="aie", 
         project="llama/linear_accumulate.prj",
-        profile=True,
-        warmup=20,
-        num_iters=100,
+        profile=False,
+        # warmup=200,
+        # num_iters=1000,
     )
 
     if TyI is bfloat16:
@@ -159,9 +159,9 @@ if __name__ == "__main__":
     # N = Q_H * HEAD_DIM # 15 * 64 = 960
     # K = EMBD # 768
 
-    # M, N, K = 128, 128, 128
+    M, N, K = 64, 64, 64
 
-    M, N, K = 64, 960, 768
+    # M, N, K = 64, 960, 768
 
 
 
