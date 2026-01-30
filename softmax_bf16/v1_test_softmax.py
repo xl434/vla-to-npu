@@ -15,8 +15,10 @@ import time
 
 KERNEL_LIB_PATH = "../cc/"
 
-Ly = Layout("S1S0")
-Ly_1 = Layout("S1")
+S = Layout.Shard
+R = Layout.Replicate
+Ly = [S(0), S(1)]
+Ly_1 = [S(0)]
 
 # -----------------------------
 # PyTorch reference (UNMASKED)
@@ -48,13 +50,13 @@ def _test_softmax_bf16_64_64():
     Ty = bfloat16
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[HEAD_TILE, HEAD_TILE])  # same mapping as masked test
+    def top(Input: Ty[SEQ_TILED, SEQ * HEAD_TILE], Output: Ty[SEQ_TILED, SEQ * HEAD_TILE]):
+        @df.kernel(mapping=[HEAD_TILE, HEAD_TILE], args=[Input, Output])
         def core(
-            Input: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
-            Output: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
+            local_Input: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
+            local_Output: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
         ):
-            softmax_kernel(Input, Output)
+            softmax_kernel(local_Input, local_Output)
 
     # Random input
     torch.manual_seed(0)
@@ -110,13 +112,13 @@ def _test_softmax_bf16_32_64():
     Ty = bfloat16
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[2, HEAD_TILE])  # same mapping as masked test
+    def top(Input: Ty[SEQ_TILED, SEQ * HEAD_TILE], Output: Ty[SEQ_TILED, SEQ * HEAD_TILE]):
+        @df.kernel(mapping=[2, HEAD_TILE], args=[Input, Output])
         def core(
-            Input: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
-            Output: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
+            local_Input: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
+            local_Output: Ty[SEQ_TILED, SEQ * HEAD_TILE] @ Ly,
         ):
-            softmax_kernel(Input, Output)
+            softmax_kernel(local_Input, local_Output)
 
     # Random input
     torch.manual_seed(0)

@@ -10,7 +10,9 @@ from allo.ir.types import float32
 from allo.backend.aie.external_kernel import ExternalModule
 
 # Matrix shape: rows=32, cols=64  (matches sin_float32 signature: [32][64])
-Ly = Layout("S0S1")
+S = Layout.Shard
+R = Layout.Replicate
+Ly = [S(0), S(1)]
 Ty = float32
 seq_tile = 32       # rows
 feature_tile = 64   # cols
@@ -28,13 +30,13 @@ def _test_sine_single_tile():
     )
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[1, 1])  # same style as your softmax/SiLU
+    def top(input_x: Ty[seq_tile, feature_tile], output_x: Ty[seq_tile, feature_tile]):
+        @df.kernel(mapping=[1, 1], args=[input_x, output_x])
         def core(
-            input_x: Ty[seq_tile, feature_tile] @ Ly,
-            output_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_input_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_output_x: Ty[seq_tile, feature_tile] @ Ly,
         ):
-            sine(input_x, output_x)
+            sine(local_input_x, local_output_x)
 
     torch.manual_seed(0)
     input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.float32) * 40.0) - 20.0  # ~U[-20,20]

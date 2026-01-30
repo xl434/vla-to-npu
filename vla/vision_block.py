@@ -45,6 +45,9 @@ import time
 torch.manual_seed(0)
 np.random.seed(0)
 
+S = Layout.Shard
+R = Layout.Replicate
+
 # ===============================================================================
 # Model Configuration
 # ===============================================================================
@@ -116,8 +119,8 @@ norm = ExternalModule(
 NORM_P0 = 4
 NORM_SEQ_TILE = 16
 NORM_TILE = NORM_SEQ_TILE // NORM_P0
-norm_io_layout = Layout("S0R")
-norm_arg_layout = Layout("R")
+norm_io_layout = [S(0), R]
+norm_arg_layout = [R]
 
 @df.region()
 def layer_norm_kernel(
@@ -151,29 +154,29 @@ def layer_norm_kernel(
 # Linear
 # ----------------------------------------------------------------
 LINEAR_M, LINEAR_N, LINEAR_K = 64, 64, 64
-linear_A_layout = Layout("S0R")
-linear_B_layout = Layout("RS1")
-linear_C_layout = Layout("S0S1")
+linear_A_layout = [S(0), R]
+linear_B_layout = [R, S(1)]
+linear_C_layout = [S(0), S(1)]
 
 @df.region()
-def linear_matmul_kernel():
-    @df.kernel(mapping=[4, 4])
+def linear_matmul_kernel(A: Ty[LINEAR_M, LINEAR_K], B: Ty[LINEAR_K, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+    @df.kernel(mapping=[4, 4], args=[A, B, C])
     def gemm(
-        A: Ty[LINEAR_M, LINEAR_K] @ linear_A_layout,
-        B: Ty[LINEAR_K, LINEAR_N] @ linear_B_layout,
-        C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_A: Ty[LINEAR_M, LINEAR_K] @ linear_A_layout,
+        local_B: Ty[LINEAR_K, LINEAR_N] @ linear_B_layout,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
     ):
-        C[:, :] = allo.matmul(A, B)
+        local_C[:, :] = allo.matmul(local_A, local_B)
 
 @df.region()
-def linear_accumulate_kernel():
-    @df.kernel(mapping=[2, 4])
+def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+    @df.kernel(mapping=[2, 4], args=[A, B, C])
     def core(
-        A: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-        B: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-        C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_A: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_B: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
     ):
-        C[:, :] = allo.add(A, B)
+        local_C[:, :] = allo.add(local_A, local_B)
 
 # ----------------------------------------------------------------
 # Attention Score
@@ -188,19 +191,19 @@ ATTN_P0 = 2
 ATTN_P1 = 2
 ATTN_SCORE_M_TILE = ATTN_P0 * 32
 ATTN_SCORE_N_TILE = ATTN_P1 * 32
-ATTN_SCORE_LyA = Layout("S0R")
-ATTN_SCORE_LyB = Layout("S1R")
-ATTN_SCORE_LyC = Layout("S0S1")
+ATTN_SCORE_LyA = [S(0), R]
+ATTN_SCORE_LyB = [S(1), R]
+ATTN_SCORE_LyC = [S(0), S(1)]
 
 @df.region()
-def attn_score_kernel():
-    @df.kernel(mapping=[ATTN_P0, ATTN_P1])
+def attn_score_kernel(A: Ty[ATTN_SCORE_M_TILE, HEAD_DIM], B: Ty[ATTN_SCORE_N_TILE, HEAD_DIM], C: Ty[ATTN_SCORE_M_TILE, ATTN_SCORE_N_TILE]):
+    @df.kernel(mapping=[ATTN_P0, ATTN_P1], args=[A, B, C])
     def core(
-        A: Ty[ATTN_SCORE_M_TILE, HEAD_DIM] @ ATTN_SCORE_LyA,
-        B: Ty[ATTN_SCORE_N_TILE, HEAD_DIM] @ ATTN_SCORE_LyB,
-        C: Ty[ATTN_SCORE_M_TILE, ATTN_SCORE_N_TILE] @ ATTN_SCORE_LyC,
+        local_A: Ty[ATTN_SCORE_M_TILE, HEAD_DIM] @ ATTN_SCORE_LyA,
+        local_B: Ty[ATTN_SCORE_N_TILE, HEAD_DIM] @ ATTN_SCORE_LyB,
+        local_C: Ty[ATTN_SCORE_M_TILE, ATTN_SCORE_N_TILE] @ ATTN_SCORE_LyC,
     ):
-        attn_score(A, B, C)
+        attn_score(local_A, local_B, local_C)
 
 # ----------------------------------------------------------------
 # Masked Softmax
@@ -208,26 +211,25 @@ def attn_score_kernel():
 softmax = ExternalModule(
     top="softmax_float32",
     impl_path=KERNEL_LIB_PATH + "v1_softmax_float.cc",
-    input_idx=[0, 1],
-    output_idx=[2],
+    input_idx=[0],
+    output_idx=[1],
 )
 Tint = int32
 SOFTMAX_P0 = 2
 SOFTMAX_P1 = 3
 SOFTMAX_HEAD_TILE = SOFTMAX_P1
 SOFTMAX_SEQ_TILE = SEQ // SOFTMAX_P0
-SOFTMAX_Ly = Layout("S1S0")
-SOFTMAX_ROW_Ly = Layout("S1")
+SOFTMAX_Ly = [S(0), S(1)]
+SOFTMAX_ROW_Ly = [S(0)]
 
 @df.region()
-def softmax_kernel():
-    @df.kernel(mapping=[SOFTMAX_P0, SOFTMAX_P1])
+def softmax_kernel(input_x: Ty[SEQ, SEQ * SOFTMAX_HEAD_TILE], output_x: Ty[SEQ, SEQ * SOFTMAX_HEAD_TILE]):
+    @df.kernel(mapping=[SOFTMAX_P0, SOFTMAX_P1], args=[input_x, output_x])
     def core(
-        input_x: Ty[SEQ, SEQ * SOFTMAX_HEAD_TILE] @ SOFTMAX_Ly,
-        row: Tint[SOFTMAX_P0] @ SOFTMAX_ROW_Ly,
-        output_x: Ty[SEQ, SEQ * SOFTMAX_HEAD_TILE] @ SOFTMAX_Ly,
+        local_input_x: Ty[SEQ, SEQ * SOFTMAX_HEAD_TILE] @ SOFTMAX_Ly,
+        local_output_x: Ty[SEQ, SEQ * SOFTMAX_HEAD_TILE] @ SOFTMAX_Ly,
     ):
-        softmax(input_x, row, output_x)
+        softmax(local_input_x, local_output_x)
 
 # ----------------------------------------------------------------
 # Gelu
@@ -241,16 +243,16 @@ gelu = ExternalModule(
 GELU_P0 = 4
 GELU_P1 = 4
 GELU_SEQ_TILE = 16
-GELU_Ly = Layout("S0S1")
+GELU_Ly = [S(0), S(1)]
 
 @df.region()
-def gelu_kernel():
-    @df.kernel(mapping=[GELU_P0, GELU_P1])
+def gelu_kernel(input_x: Ty[GELU_SEQ_TILE, FFN_HID], output_x: Ty[GELU_SEQ_TILE, FFN_HID]):
+    @df.kernel(mapping=[GELU_P0, GELU_P1], args=[input_x, output_x])
     def core(
-        input_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
-        output_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
+        local_input_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
+        local_output_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
     ):
-        gelu(input_x, output_x)
+        gelu(local_input_x, local_output_x)
 
 # ##############################################################
 # BUILD
@@ -332,13 +334,11 @@ def add_residual(residual, x, M, N):
             )
 
 def softmax(attention_score, attention_weight):
-    row_idx = np.array(list(range(0, SEQ, SOFTMAX_SEQ_TILE))).astype(np.int32)
     for i in range(N_HEAD // SOFTMAX_HEAD_TILE):
         softmax_mod(
             attention_score[
                 :, i * SOFTMAX_HEAD_TILE : (i + 1) * SOFTMAX_HEAD_TILE, :
             ],
-            row_idx,
             attention_weight[
                 :,
                 i * (SOFTMAX_HEAD_TILE * SEQ) : (i + 1) * (SOFTMAX_HEAD_TILE * SEQ),

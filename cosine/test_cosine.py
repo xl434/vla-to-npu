@@ -11,7 +11,10 @@ from allo.backend.aie.external_kernel import ExternalModule
 import time
 
 # Matrix shape: rows=32, cols=64  (matches cos_float32 signature: [32][64])
-Ly = Layout("S0S1")
+S = Layout.Shard
+R = Layout.Replicate
+Ly = [S(0), S(1)]
+
 Ty = float32
 seq_tile = 32       # rows
 feature_tile = 64    # cols
@@ -31,13 +34,13 @@ def _test_cosine_single_tile():
     )
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[1, 1])
+    def top(input_x: Ty[seq_tile, feature_tile], output_x: Ty[seq_tile, feature_tile]):
+        @df.kernel(mapping=[1, 1], args=[input_x, output_x])
         def core(
-            input_x: Ty[seq_tile, feature_tile] @ Ly,
-            output_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_input_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_output_x: Ty[seq_tile, feature_tile] @ Ly,
         ):
-            cosine(input_x, output_x)
+            cosine(local_input_x, local_output_x)
 
     # Reference and inputs
     torch.manual_seed(0)

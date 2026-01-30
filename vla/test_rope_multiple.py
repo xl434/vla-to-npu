@@ -9,9 +9,11 @@ SEQ, HEAD_DIM  = 64, 64
 HEAD_DIM_HALF = HEAD_DIM // 2
 
 # Layouts / dtypes
+S = Layout.Shard
+R = Layout.Replicate
 Ty = float32
-VecLy = Layout("S0")
-MatLy = Layout("S0S1")
+VecLy = [S(0)]
+MatLy = [S(1), S(0)]
 
 # External kernels (AIE)
 KERNEL_LIB_PATH = "../cc/"
@@ -89,79 +91,79 @@ cos_ext = ExternalModule(
 
 # -------- Regions (mapping=[1,1]) --------
 @df.region()
-def radians_region():
-    @df.kernel(mapping=[1, 1])
-    def core(positions: Ty[SEQ] @ VecLy,
-             inv_ts:    Ty[HEAD_DIM_HALF] @ VecLy,
-             radians32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
-        radians_ext(positions, inv_ts, radians32)
+def radians_region(positions: Ty[SEQ], inv_ts: Ty[HEAD_DIM_HALF], radians32: Ty[SEQ, HEAD_DIM_HALF]):
+    @df.kernel(mapping=[1, 1], args=[positions, inv_ts, radians32])
+    def core(local_positions: Ty[SEQ] @ VecLy,
+             local_inv_ts: Ty[HEAD_DIM_HALF] @ VecLy,
+             local_radians32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+        radians_ext(local_positions, local_inv_ts, local_radians32)
 
 @df.region()
-def pack_region():
-    @df.kernel(mapping=[1, 1])
-    def core(radians32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             radians64: Ty[SEQ, HEAD_DIM]      @ MatLy):
-        pack_ext(radians32, radians64)
+def pack_region(radians32: Ty[SEQ, HEAD_DIM_HALF], radians64: Ty[SEQ, HEAD_DIM]):
+    @df.kernel(mapping=[1, 1], args=[radians32, radians64])
+    def core(local_radians32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_radians64: Ty[SEQ, HEAD_DIM] @ MatLy):
+        pack_ext(local_radians32, local_radians64)
 
 @df.region()
-def sin_region():
-    @df.kernel(mapping=[1, 2])
-    def core(in64:  Ty[SEQ, HEAD_DIM] @ MatLy,
-             out64: Ty[SEQ, HEAD_DIM] @ MatLy):
-        sin_ext(in64, out64)
+def sin_region(in64: Ty[SEQ, HEAD_DIM], out64: Ty[SEQ, HEAD_DIM]):
+    @df.kernel(mapping=[1, 2], args=[in64, out64])
+    def core(local_in64: Ty[SEQ, HEAD_DIM] @ MatLy,
+             local_out64: Ty[SEQ, HEAD_DIM] @ MatLy):
+        sin_ext(local_in64, local_out64)
 
 @df.region()
-def cos_region():
-    @df.kernel(mapping=[1, 2])
-    def core(in64:  Ty[SEQ, HEAD_DIM] @ MatLy,
-             out64: Ty[SEQ, HEAD_DIM] @ MatLy):
-        cos_ext(in64, out64)
+def cos_region(in64: Ty[SEQ, HEAD_DIM], out64: Ty[SEQ, HEAD_DIM]):
+    @df.kernel(mapping=[1, 2], args=[in64, out64])
+    def core(local_in64: Ty[SEQ, HEAD_DIM] @ MatLy,
+             local_out64: Ty[SEQ, HEAD_DIM] @ MatLy):
+        cos_ext(local_in64, local_out64)
 
 @df.region()
-def copy_left_region():
-    @df.kernel(mapping=[1, 1])
-    def core(in64:  Ty[SEQ, HEAD_DIM]      @ MatLy,
-             out32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
-        copyL_ext(in64, out32)
+def copy_left_region(in64: Ty[SEQ, HEAD_DIM], out32: Ty[SEQ, HEAD_DIM_HALF]):
+    @df.kernel(mapping=[1, 1], args=[in64, out32])
+    def core(local_in64: Ty[SEQ, HEAD_DIM] @ MatLy,
+             local_out32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+        copyL_ext(local_in64, local_out32)
 
 @df.region()
-def copy_right_region():
-    @df.kernel(mapping=[1, 1])
-    def core(in64:  Ty[SEQ, HEAD_DIM]      @ MatLy,
-             out32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
-        copyR_ext(in64, out32)
+def copy_right_region(in64: Ty[SEQ, HEAD_DIM], out32: Ty[SEQ, HEAD_DIM_HALF]):
+    @df.kernel(mapping=[1, 1], args=[in64, out32])
+    def core(local_in64: Ty[SEQ, HEAD_DIM] @ MatLy,
+             local_out32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+        copyR_ext(local_in64, local_out32)
 
 @df.region()
-def join_region():
-    @df.kernel(mapping=[1, 2])
-    def core(left32:  Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             right32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             out64:   Ty[SEQ, HEAD_DIM]      @ MatLy):
-        join_ext(left32, right32, out64)
+def join_region(left32: Ty[SEQ, HEAD_DIM_HALF], right32: Ty[SEQ, HEAD_DIM_HALF], out64: Ty[SEQ, HEAD_DIM]):
+    @df.kernel(mapping=[1, 2], args=[left32, right32, out64])
+    def core(local_left32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_right32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_out64: Ty[SEQ, HEAD_DIM] @ MatLy):
+        join_ext(local_left32, local_right32, local_out64)
 
 @df.region()
-def mul32_region():
-    @df.kernel(mapping=[1, 1])
-    def core(A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
-        mul32_ext(A, B, C)
+def mul32_region(A: Ty[SEQ, HEAD_DIM_HALF], B: Ty[SEQ, HEAD_DIM_HALF], C: Ty[SEQ, HEAD_DIM_HALF]):
+    @df.kernel(mapping=[1, 1], args=[A, B, C])
+    def core(local_A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+        mul32_ext(local_A, local_B, local_C)
 
 @df.region()
-def add32_region():
-    @df.kernel(mapping=[1, 1])
-    def core(A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
-        add32_ext(A, B, C)
+def add32_region(A: Ty[SEQ, HEAD_DIM_HALF], B: Ty[SEQ, HEAD_DIM_HALF], C: Ty[SEQ, HEAD_DIM_HALF]):
+    @df.kernel(mapping=[1, 1], args=[A, B, C])
+    def core(local_A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+        add32_ext(local_A, local_B, local_C)
 
 @df.region()
-def sub32_region():
-    @df.kernel(mapping=[1, 1])
-    def core(A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-             C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
-        sub32_ext(A, B, C)
+def sub32_region(A: Ty[SEQ, HEAD_DIM_HALF], B: Ty[SEQ, HEAD_DIM_HALF], C: Ty[SEQ, HEAD_DIM_HALF]):
+    @df.kernel(mapping=[1, 1], args=[A, B, C])
+    def core(local_A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
+             local_C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+        sub32_ext(local_A, local_B, local_C)
 
 # -------- Build all modules --------
 

@@ -42,6 +42,9 @@ from allo.backend.aie import ExternalModule
 torch.manual_seed(0)
 np.random.seed(0)
 
+S = Layout.Shard
+R = Layout.Replicate
+
 # ===============================================================================
 # Model Configuration
 # ===============================================================================
@@ -115,29 +118,29 @@ def run(x_fp32: np.ndarray, params: dict):
     # Linear
     # ----------------------------------------------------------------
     LINEAR_M, LINEAR_N, LINEAR_K = 64, 64, 64
-    linear_A_layout = Layout("S0R")
-    linear_B_layout = Layout("RS1")
-    linear_C_layout = Layout("S0S1")
+    linear_A_layout = [S(0), R]
+    linear_B_layout = [R, S(1)]
+    linear_C_layout = [S(0), S(1)]
 
     @df.region()
-    def linear_matmul_kernel():
-        @df.kernel(mapping=[4, 4])
+    def linear_matmul_kernel(A: Ty[LINEAR_M, LINEAR_K], B: Ty[LINEAR_K, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+        @df.kernel(mapping=[4, 4], args=[A, B, C])
         def gemm(
-            A: Ty[LINEAR_M, LINEAR_K] @ linear_A_layout,
-            B: Ty[LINEAR_K, LINEAR_N] @ linear_B_layout,
-            C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_A: Ty[LINEAR_M, LINEAR_K] @ linear_A_layout,
+            local_B: Ty[LINEAR_K, LINEAR_N] @ linear_B_layout,
+            local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
         ):
-            C[:, :] = allo.matmul(A, B)
+            local_C[:, :] = allo.matmul(local_A, local_B)
 
     @df.region()
-    def linear_accumulate_kernel():
-        @df.kernel(mapping=[2, 4])
+    def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+        @df.kernel(mapping=[2, 4], args=[A, B, C])
         def core(
-            A: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-            B: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-            C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_A: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_B: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
         ):
-            C[:, :] = allo.add(A, B)
+            local_C[:, :] = allo.add(local_A, local_B)
     # ----------------------------------------------------------------
     # SiLU
     # ----------------------------------------------------------------
@@ -150,25 +153,25 @@ def run(x_fp32: np.ndarray, params: dict):
     GELU_P0 = 4
     GELU_P1 = 4
     GELU_SEQ_TILE = 16
-    GELU_Ly = Layout("S0S1")
+    GELU_Ly = [S(0), S(1)]
 
     @df.region()
-    def silu_kernel():
-        @df.kernel(mapping=[GELU_P0, GELU_P1])
+    def silu_kernel(input_x: Ty[GELU_SEQ_TILE, FFN_HID], output_x: Ty[GELU_SEQ_TILE, FFN_HID]):
+        @df.kernel(mapping=[GELU_P0, GELU_P1], args=[input_x, output_x])
         def core(
-            input_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
-            output_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
+            local_input_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
+            local_output_x: Ty[GELU_SEQ_TILE, FFN_HID] @ GELU_Ly,
         ):
-            silu(input_x, output_x)
+            silu(local_input_x, local_output_x)
     
     # ----------------------------------------------------------------
     # Hadamard
     # ----------------------------------------------------------------
     @df.region()
-    def hadamard_kernel():
-        @df.kernel(mapping=[1])
-        def core(A: Ty[EMBD], B: Ty[EMBD], C: Ty[EMBD]):
-            C[:] = allo.mul(A, B)
+    def hadamard_kernel(A: Ty[EMBD], B: Ty[EMBD], C: Ty[EMBD]):
+        @df.kernel(mapping=[1], args=[A, B, C])
+        def core(local_A: Ty[EMBD], local_B: Ty[EMBD], local_C: Ty[EMBD]):
+            local_C[:] = allo.mul(local_A, local_B)
 
     # ##############################################################
     # BUILD

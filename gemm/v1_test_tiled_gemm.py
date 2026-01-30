@@ -16,6 +16,9 @@ import time
 torch.manual_seed(0)
 np.random.seed(0)
 
+S = Layout.Shard
+R = Layout.Replicate
+
 # ===============================================================================
 # Model Configuration
 # ===============================================================================
@@ -50,30 +53,30 @@ def test_tiled_gemm(M, N, K, TyI, TyO):
     LINEAR_M, LINEAR_N, LINEAR_K = 64, 64, 64
     Mt, Nt = M // LINEAR_M, N // LINEAR_N
 
-    linear_A_layout = Layout("S0R")
-    linear_B_layout = Layout("RS1")
-    linear_C_layout = Layout("S0S1")
+    linear_A_layout = [S(0), R]
+    linear_B_layout = [R, S(1)]
+    linear_C_layout = [S(0), S(1)]
 
     @df.region()
-    def linear_matmul_kernel():
-        @df.kernel(mapping=[4, 4])
+    def linear_matmul_kernel(A: TyI[LINEAR_M, LINEAR_K], B: TyI[LINEAR_K, LINEAR_N], C: TyO[LINEAR_M, LINEAR_N]):
+        @df.kernel(mapping=[4, 4], args=[A, B, C])
         def gemm(
-            A: TyI[LINEAR_M, LINEAR_K] @ linear_A_layout,
-            B: TyI[LINEAR_K, LINEAR_N] @ linear_B_layout,
-            C: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_A: TyI[LINEAR_M, LINEAR_K] @ linear_A_layout,
+            local_B: TyI[LINEAR_K, LINEAR_N] @ linear_B_layout,
+            local_C: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
         ):
-            C[:, :] = allo.matmul(A, B)
+            local_C[:, :] = allo.matmul(local_A, local_B)
 
 
     @df.region()
-    def linear_accumulate_kernel():
-        @df.kernel(mapping=[2, 4])
+    def linear_accumulate_kernel(A: TyO[LINEAR_M, LINEAR_N], B: TyO[LINEAR_M, LINEAR_N], C: TyO[LINEAR_M, LINEAR_N]):
+        @df.kernel(mapping=[2, 4], args=[A, B, C])
         def core(
-            A: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
-            B: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
-            C: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_A: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_B: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
+            local_C: TyO[LINEAR_M, LINEAR_N] @ linear_C_layout,
         ):
-            C[:, :] = allo.add(A, B)
+            local_C[:, :] = allo.add(local_A, local_B)
 
     linear_matmul_mod = df.build(
         linear_matmul_kernel, 

@@ -12,6 +12,8 @@ from allo.backend.aie.external_kernel import ExternalModule
 np.random.seed(42)
 os.environ["ENABLE_AGGRESSIVE_PORT_UTILIZATION_PATCH"] = "1"
 
+S = Layout.Shard
+R = Layout.Replicate
 
 
 # ===============================================================================
@@ -26,7 +28,7 @@ def test_mapping_softmax_4_1024():
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile  # 256
-    SOFTMAX_Ly = Layout("S0R")
+    SOFTMAX_Ly = [S(0), R]
 
     softmax = ExternalModule(
         top="softmax_bf16",
@@ -52,13 +54,13 @@ def test_mapping_softmax_4_1024():
         return primitives
 
     @df.region()
-    def softmax_kernel():
-        @df.kernel(mapping=[SOFTMAX_P0])
+    def softmax_kernel(input_x: Ty[N, N], output_x: Ty[N, N]):
+        @df.kernel(mapping=[SOFTMAX_P0], args=[input_x, output_x])
         def core(
-            input_x: Ty[N, N] @ SOFTMAX_Ly,
-            output_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_input_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_output_x: Ty[N, N] @ SOFTMAX_Ly,
         ):
-            softmax(input_x, output_x)
+            softmax(local_input_x, local_output_x)
 
     softmax_mod = df.build(
         softmax_kernel,
@@ -105,7 +107,7 @@ def test_mapping_softmax_8_512():
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile
-    SOFTMAX_Ly = Layout("S0R")
+    SOFTMAX_Ly = [S(0), R]
 
     softmax = ExternalModule(
         top="softmax_bf16_8_512",
@@ -131,13 +133,13 @@ def test_mapping_softmax_8_512():
         return primitives
 
     @df.region()
-    def softmax_kernel():
-        @df.kernel(mapping=[SOFTMAX_P0])
+    def softmax_kernel(input_x: Ty[N, N], output_x: Ty[N, N]):
+        @df.kernel(mapping=[SOFTMAX_P0], args=[input_x, output_x])
         def core(
-            input_x: Ty[N, N] @ SOFTMAX_Ly,
-            output_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_input_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_output_x: Ty[N, N] @ SOFTMAX_Ly,
         ):
-            softmax(input_x, output_x)
+            softmax(local_input_x, local_output_x)
 
     softmax_mod = df.build(
         softmax_kernel,
@@ -184,7 +186,7 @@ def test_mapping_softmax_16_256():
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile
-    SOFTMAX_Ly = Layout("S0R")
+    SOFTMAX_Ly = [S(0), R]
 
     softmax = ExternalModule(
         top="softmax_bf16_16_256",
@@ -210,13 +212,13 @@ def test_mapping_softmax_16_256():
         return primitives
 
     @df.region()
-    def softmax_kernel():
-        @df.kernel(mapping=[SOFTMAX_P0])
+    def softmax_kernel(input_x: Ty[N, N], output_x: Ty[N, N]):
+        @df.kernel(mapping=[SOFTMAX_P0], args=[input_x, output_x])
         def core(
-            input_x: Ty[N, N] @ SOFTMAX_Ly,
-            output_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_input_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_output_x: Ty[N, N] @ SOFTMAX_Ly,
         ):
-            softmax(input_x, output_x)
+            softmax(local_input_x, local_output_x)
 
     softmax_mod = df.build(
         softmax_kernel,
@@ -263,7 +265,7 @@ def test_mapping_softmax_32_128():
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile
-    SOFTMAX_Ly = Layout("S0R")
+    SOFTMAX_Ly = [S(0), R]
 
     softmax = ExternalModule(
         top="softmax_bf16_32_128",
@@ -289,13 +291,13 @@ def test_mapping_softmax_32_128():
         return primitives
 
     @df.region()
-    def softmax_kernel():
-        @df.kernel(mapping=[SOFTMAX_P0])
+    def softmax_kernel(input_x: Ty[N, N], output_x: Ty[N, N]):
+        @df.kernel(mapping=[SOFTMAX_P0], args=[input_x, output_x])
         def core(
-            input_x: Ty[N, N] @ SOFTMAX_Ly,
-            output_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_input_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_output_x: Ty[N, N] @ SOFTMAX_Ly,
         ):
-            softmax(input_x, output_x)
+            softmax(local_input_x, local_output_x)
 
     softmax_mod = df.build(
         softmax_kernel,
@@ -343,7 +345,7 @@ def test_mapping_softmax_64_64():
 
     P0_tile = 64
     SOFTMAX_P0 = N // P0_tile
-    SOFTMAX_Ly = Layout("S0R")
+    SOFTMAX_Ly = [S(0), R]
 
     softmax = ExternalModule(
         top="softmax_bf16_64_64",
@@ -369,13 +371,13 @@ def test_mapping_softmax_64_64():
         return primitives
 
     @df.region()
-    def softmax_kernel():
-        @df.kernel(mapping=[SOFTMAX_P0])
+    def softmax_kernel(input_x: Ty[N, N], output_x: Ty[N, N]):
+        @df.kernel(mapping=[SOFTMAX_P0], args=[input_x, output_x])
         def core(
-            input_x: Ty[N, N] @ SOFTMAX_Ly,
-            output_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_input_x: Ty[N, N] @ SOFTMAX_Ly,
+            local_output_x: Ty[N, N] @ SOFTMAX_Ly,
         ):
-            softmax(input_x, output_x)
+            softmax(local_input_x, local_output_x)
 
     softmax_mod = df.build(
         softmax_kernel,

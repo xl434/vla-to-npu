@@ -9,6 +9,8 @@ from allo.backend.aie import ExternalModule
 # ----------------------------
 # Config
 # ----------------------------
+S = Layout.Shard
+R = Layout.Replicate
 Ty = float32
 SEQ = 64
 EMBD = 768
@@ -30,8 +32,8 @@ NORM_P0 = 4
 NORM_SEQ_TILE = 16
 NORM_TILE = NORM_SEQ_TILE // NORM_P0
 
-norm_io_layout = Layout("S0R")
-norm_arg_layout = Layout("R")
+norm_io_layout = [S(0), R]
+norm_arg_layout = [R]
 
 @df.region()
 def layer_norm_kernel(

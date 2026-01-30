@@ -11,8 +11,9 @@ from allo.memory import Layout
 from allo.ir.types import float32
 from allo.backend.aie.external_kernel import ExternalModule
 
-
-Ly = Layout("S0S1")
+S = Layout.Shard
+R = Layout.Replicate
+Ly = [S(0), S(1)]
 Ty = float32
 
 feature_tile = 768
@@ -29,13 +30,13 @@ def _test_silu_single_tile():
     )
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[1, 1])
+    def top(input_x: Ty[seq_tile, feature_tile], output_x: Ty[seq_tile, feature_tile]):
+        @df.kernel(mapping=[1, 1], args=[input_x, output_x])
         def core(
-            input_x: Ty[seq_tile, feature_tile] @ Ly,
-            output_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_input_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_output_x: Ty[seq_tile, feature_tile] @ Ly,
         ):
-            silu(input_x, output_x)
+            silu(local_input_x, local_output_x)
 
     # Reference PyTorch SiLU
     silu_model = nn.SiLU().cpu()
@@ -65,13 +66,13 @@ def _test_silu_tiling():
     feature_dim = feature_tile * P1
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[P0, P1])
+    def top(input_x: Ty[seq, feature_dim], output_x: Ty[seq, feature_dim]):
+        @df.kernel(mapping=[P0, P1], args=[input_x, output_x])
         def core(
-            input_x: Ty[seq, feature_dim] @ Ly,
-            output_x: Ty[seq, feature_dim] @ Ly,
+            local_input_x: Ty[seq, feature_dim] @ Ly,
+            local_output_x: Ty[seq, feature_dim] @ Ly,
         ):
-            silu(input_x, output_x)
+            silu(local_input_x, local_output_x)
 
     # Reference PyTorch SiLU
     silu_model = nn.SiLU().cpu()

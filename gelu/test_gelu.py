@@ -13,7 +13,9 @@ from allo.backend.aie.external_kernel import ExternalModule
 
 KERNEL_LIB_PATH = "../cc/"
 
-Ly = Layout("S0S1")
+S = Layout.Shard
+R = Layout.Replicate
+Ly = [S(0), S(1)]
 Ty = float32
 
 feature_tile = 768
@@ -28,13 +30,13 @@ def _test_gelu_single_tile():
     )
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[1, 1])
+    def top(input_x: Ty[seq_tile, feature_tile], output_x: Ty[seq_tile, feature_tile]):
+        @df.kernel(mapping=[1, 1], args=[input_x, output_x])
         def core(
-            input_x: Ty[seq_tile, feature_tile] @ Ly,
-            output_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_input_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_output_x: Ty[seq_tile, feature_tile] @ Ly,
         ):
-            gelu(input_x, output_x)
+            gelu(local_input_x, local_output_x)
 
     gelu_model = nn.GELU()
     input_tensor = torch.randn(seq_tile, feature_tile, dtype=torch.float32)
@@ -57,17 +59,18 @@ def _test_gelu_tiling():
     ## Testing 16 * 3072
     P0 = 4
     P1 = 4
-    seq = seq_tile * P1      # rows
-    feature_dim = feature_tile * P0
+
+    feature_dim = P0 * feature_tile
+    seq = P1 * seq_tile
 
     @df.region()
-    def top():
-        @df.kernel(mapping=[P1, P0])
+    def top(input_x: Ty[seq, feature_dim], output_x: Ty[seq, feature_dim]):
+        @df.kernel(mapping=[P1, P0], args=[input_x, output_x])
         def core(
-            input_x: Ty[seq, feature_dim] @ Ly,
-            output_x: Ty[seq, feature_dim] @ Ly,
+            local_input_x: Ty[seq, feature_dim] @ Ly,
+            local_output_x: Ty[seq, feature_dim] @ Ly,
         ):
-            gelu(input_x, output_x)
+            gelu(local_input_x, local_output_x)
 
     gelu_model = nn.GELU()
     input_tensor = torch.randn(seq, feature_dim, dtype=torch.float32)
@@ -76,10 +79,10 @@ def _test_gelu_tiling():
         mod = df.build(top, target="aie")
         output_allo = np.zeros((seq, feature_dim)).astype(np.float32)
         mod(input_tensor.cpu().numpy(), output_allo)
-        # np.testing.assert_allclose(output_allo, output, rtol=1e-2)
+        np.testing.assert_allclose(output_allo, output, rtol=1e-2)
         print("PASSED!")
 
 
 if __name__ == "__main__":
-    _test_gelu_single_tile()
+    # _test_gelu_single_tile()
     _test_gelu_tiling()

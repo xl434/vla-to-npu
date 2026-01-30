@@ -9,6 +9,8 @@ import allo.dataflow as df
 from allo.ir.types import float32
 from allo.memory import Layout
 
+S = Layout.Shard
+R = Layout.Replicate
 
 # -----------------------------
 # Config & Embedding Class
@@ -49,28 +51,28 @@ class SiglipVisionEmbeddings(nn.Module):
 # -----------------------------
 LINEAR_M, LINEAR_N, LINEAR_K = 64, 64, 64
 Ty = float32
-A_Ly = Layout("S0R")
-B_Ly = Layout("RS1")
-C_Ly = Layout("S0S1")
+A_Ly = [S(0), R]
+B_Ly = [R, S(1)]
+C_Ly = [S(0), S(1)]
 
 @df.region()
-def linear_matmul_kernel():
-    @df.kernel(mapping=[4, 4])
+def linear_matmul_kernel(A: Ty[LINEAR_M, LINEAR_K], B: Ty[LINEAR_K, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+    @df.kernel(mapping=[4, 4], args=[A, B, C])
     def gemm(
-        A: Ty[LINEAR_M, LINEAR_K] @ A_Ly,
-        B: Ty[LINEAR_K, LINEAR_N] @ B_Ly,
-        C: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
+        local_A: Ty[LINEAR_M, LINEAR_K] @ A_Ly,
+        local_B: Ty[LINEAR_K, LINEAR_N] @ B_Ly,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
     ):
-        C[:, :] = allo.matmul(A, B)
+        local_C[:, :] = allo.matmul(local_A, local_B)
 @df.region()
-def linear_accumulate_kernel():
-    @df.kernel(mapping=[2, 4])
+def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+    @df.kernel(mapping=[2, 4], args=[A, B, C])
     def core(
-        A: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
-        B: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
-        C: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
+        local_A: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
+        local_B: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ C_Ly,
     ):
-        C[:, :] = allo.add(A, B)
+        local_C[:, :] = allo.add(local_A, local_B)
 
 # -----------------------------
 # Vision Embedding kernel: copy one [P,P] tile
@@ -82,18 +84,18 @@ N = OUT_H * OUT_W
 K = C * P * P   # flattened patch length
 
 @df.region()
-def tile_copy_region():
-    @df.kernel(mapping=[2, 2])
+def tile_copy_region(X_tile: float32[P, P], Y_tile: float32[P, P]):
+    @df.kernel(mapping=[2, 2], args=[X_tile, Y_tile])
     def tile_copy(
-        X_tile: float32[P, P] @ C_Ly,
-        Y_tile: float32[P, P] @ C_Ly,
+        local_X_tile: float32[P, P] @ C_Ly,
+        local_Y_tile: float32[P, P] @ C_Ly,
     ):
-        Y_tile[:, :] = X_tile[:, :]
+        local_Y_tile[:, :] = local_X_tile[:, :]
 
 
-linear_matmul_mod = df.build(linear_matmul_kernel, target="aie-mlir", project="emb.proj")
-linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie-mlir", project="emb.prj")
-tile_copy_mod = df.build(tile_copy_region, target="aie-mlir", project="emb.prj")
+linear_matmul_mod = df.build(linear_matmul_kernel, target="aie", project="emb.proj")
+linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie", project="emb.prj")
+tile_copy_mod = df.build(tile_copy_region, target="aie", project="emb.prj")
 
 # -----------------------------
 # General helper: loop over patches and channels
@@ -129,20 +131,20 @@ def linear_accumulation(A, B, C, M, N):
     assert A.shape == (M, N) and B.shape == (M, N) and C.shape == (M, N)
     for i in range(M // LINEAR_M):
         for j in range(N // LINEAR_N):
-            linear_accumulate_mod(
-                A[
-                    i * LINEAR_M : (i + 1) * LINEAR_M,
-                    j * LINEAR_N : (j + 1) * LINEAR_N,
-                ],
-                B[
-                    i * LINEAR_M : (i + 1) * LINEAR_M,
-                    j * LINEAR_N : (j + 1) * LINEAR_N,
-                ], 
-                C[
-                    i * LINEAR_M : (i + 1) * LINEAR_M,
-                    j * LINEAR_N : (j + 1) * LINEAR_N,
-                ],
-            )
+            A_slice = np.ascontiguousarray(A[
+                i * LINEAR_M : (i + 1) * LINEAR_M,
+                j * LINEAR_N : (j + 1) * LINEAR_N,
+            ])
+            B_slice = np.ascontiguousarray(B[
+                i * LINEAR_M : (i + 1) * LINEAR_M,
+                j * LINEAR_N : (j + 1) * LINEAR_N,
+            ])
+            C_out = np.zeros((LINEAR_M, LINEAR_N), dtype=np.float32)
+            linear_accumulate_mod(A_slice, B_slice, C_out)
+            C[
+                i * LINEAR_M : (i + 1) * LINEAR_M,
+                j * LINEAR_N : (j + 1) * LINEAR_N,
+            ] = C_out
 
 def allo_unfold_host(img_bchw: np.ndarray) -> np.ndarray:
     """
