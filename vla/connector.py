@@ -109,24 +109,23 @@ def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N
 # ##############################################################
 # BUILD
 # ##############################################################
-copy_mod = df.build(copy, target="aie", project="copy.proj")
-linear_matmul_mod = df.build(linear_matmul_kernel, target="aie", project="linear_matmul.proj")
-linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie", project="linear_accumulate.proj")
+copy_mod = df.build(copy, target="aie", project="copy.prj")
+linear_matmul_mod = df.build(linear_matmul_kernel, target="aie", project="linear_matmul.prj")
+linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie", project="linear_accumulate.prj")
 
 # ##############################################################
 # TOOL
 # ##############################################################
 def pixel_shuffle(A, C):
-    for j in range(NEW_SEQ):
-        i = j * 16
+    for i in range(NEW_SEQ):
+        offset = (i // 8) * 128 + (i % 8) * 4
         for k in range(4):
-            print(k * EMBD * 4, (k+1)*EMBD*4)
             tile_A = A[ 
-                i + k * 4 : i + (k + 1) * 4,
+                offset + k * 32 : offset + k * 32 + 4,
                 :
             ]
             tile_C = C[
-                j: j + 1,
+                i: i + 1,
                 k * EMBD * 4 : (k + 1) * (EMBD * 4)
             ]
             copy_mod(tile_A, tile_C)
