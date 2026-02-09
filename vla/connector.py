@@ -35,12 +35,19 @@ vlm_with_expert.vlm.model.vision_model.post_layernorm                           
 vlm_with_expert.vlm.model.connector.modality_projection.proj                     | Linear             | [(1, 64, 12288)] -> [(1, 64, 960)]
 """
 
-import numpy as np
-import allo
+import os
+import pytest
+import torch
+import torch.nn as nn
+from allo.ir.types import float32
 import allo.dataflow as df
-from allo.ir.types import float32, int32, Stream
+import numpy as np
 from allo.memory import Layout
-from allo.backend.aie import ExternalModule
+from allo.backend.aie.external_kernel import ExternalModule
+from allo.backend.aie import is_available
+
+torch.manual_seed(0)
+np.random.seed(0)
 
 S = Layout.Shard
 R = Layout.Replicate
@@ -52,32 +59,24 @@ SF = 4
 NEW_SEQ = 64 # 1024 / 4 / 4
 NEW_EMBD = 12288 # 768 * 4 * 4
 TEXT = 960
-PIX_SEQ_TILE = 32
-PIX_P0 = 4
-PIX_TILE = PIX_SEQ_TILE // PIX_P0 # for now
 
 # ===============================================================================
 # Allo Version
 # ===============================================================================
 
+Ty = float32
 
-Ty = float32  # All tensors use float32
-# ----------------------------------------------
-
-norm_io_layout = [S(0), R]
+linear_A_layout = [S(0), R]
+linear_C_layout = [R, S(0)]
 
 @df.region()
-def pixel_shuffle_kernel(
-    input_x: Ty[SEQ, EMBD],
-    output_x: Ty[NEW_SEQ, NEW_EMBD],
-):
-
-    @df.kernel(mapping=[PIX_P0], args=[input_x, output_x])
-    def shuffle(
-        local_input_x: Ty[SEQ, EMBD] @ norm_io_layout,
-        local_output_y: Ty[NEW_SEQ, NEW_EMBD] @ norm_io_layout,
+def copy(A: Ty[4, EMBD], C: Ty[1, EMBD*4]):
+    @df.kernel(mapping=[4], args=[A,C])
+    def mod(
+        local_A: Ty[4, EMBD] @ linear_A_layout,
+        local_C: Ty[1, EMBD*4] @ linear_C_layout,
     ):
-        """ edit """
+        local_C[:,:] = local_A[:,:]
 
 # ----------------------------------------------------------------
 # Linear
@@ -107,17 +106,31 @@ def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N
     ):
         local_C[:, :] = allo.add(local_A, local_B)
 
-
 # ##############################################################
 # BUILD
 # ##############################################################
-pixel_shuffle_mod = df.build(pixel_shuffle_kernel, target="aie", project="pixel_shuffle.proj")
+copy_mod = df.build(copy, target="aie", project="copy.proj")
 linear_matmul_mod = df.build(linear_matmul_kernel, target="aie", project="linear_matmul.proj")
 linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie", project="linear_accumulate.proj")
 
 # ##############################################################
 # TOOL
 # ##############################################################
+def pixel_shuffle(A, C):
+    for j in range(NEW_SEQ):
+        i = j * 16
+        for k in range(4):
+            print(k * EMBD * 4, (k+1)*EMBD*4)
+            tile_A = A[ 
+                i + k * 4 : i + (k + 1) * 4,
+                :
+            ]
+            tile_C = C[
+                j: j + 1,
+                k * EMBD * 4 : (k + 1) * (EMBD * 4)
+            ]
+            copy_mod(tile_A, tile_C)
+
 def linear_projection(A, B, C, M, N, K):
     for i in range(M // LINEAR_M):
         for j in range(N // LINEAR_N):
@@ -152,7 +165,8 @@ def connector_block(x_fp32: np.ndarray, params: dict):
     x = x_fp32.astype(np.float32)
     x = x.reshape(SEQ, EMBD)
     x_shuffled = np.zeros((NEW_SEQ, NEW_EMBD), dtype=np.float32)
-    pixel_shuffle_mod(x, x_shuffled)
+    out = np.zeros((NEW_SEQ, TEXT), dtype=np.float32)
+    pixel_shuffle(x, x_shuffled)
     linear_projection(x_shuffled, params["W"], out, NEW_SEQ, TEXT, NEW_EMBD)
     return out
 
@@ -162,6 +176,10 @@ def connector_block(x_fp32: np.ndarray, params: dict):
 if __name__ == "__main__":
     x = np.random.randn(SEQ, EMBD).astype(np.float32)
     w = np.random.randn(EMBD*(SF**2), TEXT).astype(np.float32)
+    dict = {"W": w}
+    out = connector_block(x, dict)
 
-    out = connector_block(x, w)
-    print(out.shape)
+    # test python
+    x = x.reshape(32, 32, 768).reshape(32, 8, 3072).transpose(1, 0, 2).reshape(8, 8, 12288).transpose(1, 0, 2).reshape(64, 12288)
+    expected = x @ w
+    np.testing.assert_allclose(out, expected, rtol=1e-5)
