@@ -30,7 +30,11 @@ class Idefics3SimpleMLP(nn.Module):
 
     def forward(self, x):
         return self.proj(x)
+
+vlm_with_expert.vlm.model.vision_model.post_layernorm                            | LayerNorm          | [(1, 1024, 768)] -> [(1, 1024, 768)]
+vlm_with_expert.vlm.model.connector.modality_projection.proj                     | Linear             | [(1, 64, 12288)] -> [(1, 64, 960)]
 """
+
 import numpy as np
 import allo
 import allo.dataflow as df
@@ -41,12 +45,16 @@ from allo.backend.aie import ExternalModule
 S = Layout.Shard
 R = Layout.Replicate
 
-BATCH = 1  # fixme: don't care for now
-SEQ = 64
-EMBD = 768  # 64 * 12
-PATCH_SEQ_TILE = 16
-SF = 2
-TEXT = 512
+BATCH = 1
+SEQ = 1024
+EMBD = 768
+SF = 4
+NEW_SEQ = 64 # 1024 / 4 / 4
+NEW_EMBD = 12288 # 768 * 4 * 4
+TEXT = 960
+PIX_SEQ_TILE = 32
+PIX_P0 = 4
+PIX_TILE = PIX_SEQ_TILE // PIX_P0 # for now
 
 # ===============================================================================
 # Allo Version
@@ -54,7 +62,6 @@ TEXT = 512
 
 
 Ty = float32  # All tensors use float32
-N = BATCH * SEQ  # 16   flattened (batch*seq)
 # ----------------------------------------------
 
 norm_io_layout = [S(0), R]
@@ -62,52 +69,43 @@ norm_io_layout = [S(0), R]
 @df.region()
 def pixel_shuffle_kernel(
     input_x: Ty[SEQ, EMBD],
-    output_x: Ty[SEQ/(SF**2), N_EMBD*(SF**2)],
+    output_x: Ty[NEW_SEQ, NEW_EMBD],
 ):
 
-    @df.kernel(mapping=[PATCH_SEQ_TILE], args=[input_x, output_x])
-    def shuffle (
+    @df.kernel(mapping=[PIX_P0], args=[input_x, output_x])
+    def shuffle(
         local_input_x: Ty[SEQ, EMBD] @ norm_io_layout,
-        local_output_y: Ty[SEQ/(SF**2), N_EMBD*(SF**2)] @ norm_io_layout,
+        local_output_y: Ty[NEW_SEQ, NEW_EMBD] @ norm_io_layout,
     ):
-        """
-        NP = PATCH_SEQ_TILE // sf
-        for i in range(h_new):
-            for j in range(w_new):
-                for si in range(sf):
-                    for sj in range(sf):
-                        # Map input channel block to output
-                        local_output_x[i, j, (si*sf + sj)*d//(sf*sf):(si*sf + sj + 1)*d//(sf*sf)] = \
-                            local_input_x[i*sf+si, j*sf+sj, :]
-                            """
+        """ edit """
 
-    # ----------------------------------------------------------------
-    # Linear
-    # ----------------------------------------------------------------
-    LINEAR_M, LINEAR_N, LINEAR_K = 64, 64, 64
-    linear_A_layout = [S(0), R]
-    linear_B_layout = [R, S(1)]
-    linear_C_layout = [S(0), S(1)]
+# ----------------------------------------------------------------
+# Linear
+# ----------------------------------------------------------------
+LINEAR_M, LINEAR_N, LINEAR_K = 64, 64, 64
+linear_A_layout = [S(0), R]
+linear_B_layout = [R, S(1)]
+linear_C_layout = [S(0), S(1)]
 
-    @df.region()
-    def linear_matmul_kernel(A: Ty[LINEAR_M, LINEAR_K], B: Ty[LINEAR_K, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
-        @df.kernel(mapping=[4, 4], args=[A, B, C])
-        def gemm(
-            local_A: Ty[LINEAR_M, LINEAR_K] @ linear_A_layout,
-            local_B: Ty[LINEAR_K, LINEAR_N] @ linear_B_layout,
-            local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-        ):
-            local_C[:, :] = allo.matmul(local_A, local_B)
+@df.region()
+def linear_matmul_kernel(A: Ty[LINEAR_M, LINEAR_K], B: Ty[LINEAR_K, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+    @df.kernel(mapping=[4, 4], args=[A, B, C])
+    def gemm(
+        local_A: Ty[LINEAR_M, LINEAR_K] @ linear_A_layout,
+        local_B: Ty[LINEAR_K, LINEAR_N] @ linear_B_layout,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+    ):
+        local_C[:, :] = allo.matmul(local_A, local_B)
 
-    @df.region()
-    def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
-        @df.kernel(mapping=[2, 4], args=[A, B, C])
-        def core(
-            local_A: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-            local_B: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-            local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-        ):
-            local_C[:, :] = allo.add(local_A, local_B)
+@df.region()
+def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
+    @df.kernel(mapping=[2, 4], args=[A, B, C])
+    def core(
+        local_A: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_B: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+    ):
+        local_C[:, :] = allo.add(local_A, local_B)
 
 
 # ##############################################################
@@ -146,19 +144,16 @@ def linear_projection(A, B, C, M, N, K):
                     ],
                 )
 
-# Weight matrix is size [EMBD*(SF**2), TEXT]
-def connector_block(x_fp32: np.ndarray, weights: np.ndarray):
+# Weight matrix is size [12288, 960]
+def connector_block(x_fp32: np.ndarray, params: dict):
     # ##############################################################
     # FORWARD
     # ##############################################################
     x = x_fp32.astype(np.float32)
     x = x.reshape(SEQ, EMBD)
-    weights = weights.reshape(EMBD*(SF**2), TEXT)
-    S_out = SEQ/(SF**2)
-    D_out = EMBD*(SF**2)
-    x_shuffled = np.zeros((S_out, D_out), dtype=np.float32)
+    x_shuffled = np.zeros((NEW_SEQ, NEW_EMBD), dtype=np.float32)
     pixel_shuffle_mod(x, x_shuffled)
-    linear_projection(x_shuffled, weights, out, S_out, TEXT, D_out)
+    linear_projection(x_shuffled, params["W"], out, NEW_SEQ, TEXT, NEW_EMBD)
     return out
 
 # ##############################################################
