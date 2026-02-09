@@ -19,14 +19,6 @@ R = Layout.Replicate
 
 Ty=float32
 
-# Use external copy kernel
-copy_kernel = ExternalModule(
-    top="copy_float32",
-    impl_path="./cc/copy.cc",
-    input_idx=[0],
-    output_idx=[1],
-)
-
 linear_A_layout = [S(0), R]
 linear_C_layout = [R, S(0)]
 
