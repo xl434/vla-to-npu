@@ -39,6 +39,7 @@ import os
 import pytest
 import torch
 import torch.nn as nn
+import allo
 from allo.ir.types import float32
 import allo.dataflow as df
 import numpy as np
@@ -66,15 +67,15 @@ TEXT = 960
 
 Ty = float32
 
-linear_A_layout = [S(0), R]
-linear_C_layout = [R, S(0)]
+linear_in_layout = [S(0), R]
+linear_out_layout = [R, S(0)]
 
 @df.region()
 def copy(A: Ty[4, EMBD], C: Ty[1, EMBD*4]):
     @df.kernel(mapping=[4], args=[A,C])
     def mod(
-        local_A: Ty[4, EMBD] @ linear_A_layout,
-        local_C: Ty[1, EMBD*4] @ linear_C_layout,
+        local_A: Ty[4, EMBD] @ linear_in_layout,
+        local_C: Ty[1, EMBD*4] @ linear_out_layout,
     ):
         local_C[:,:] = local_A[:,:]
 
