@@ -215,7 +215,7 @@ extern "C" {
 //   }
 // }
 
-void silu_float32_vec(float input_x[4][768], float output_x[4][768]) {
+void silu_float32(float input_x[4][768], float output_x[4][768]) {
   constexpr int SEQ_TILE = 4;
   constexpr int FEATURE_DIM_TILE = 768;
   constexpr int vec_factor = 8;

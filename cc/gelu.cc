@@ -106,7 +106,7 @@ extern "C" {
 // }
 
 // vector version gelu
-void gelu_float32_vec(float input_x[4][768], float output_x[4][768]) {
+void gelu_float32(float input_x[4][768], float output_x[4][768]) {
 // void gelu_float32_vec(float input_x[4][16], float output_x[4][16]) {
   //constexpr int SEQ_TILE = 4;
   constexpr int SEQ_TILE = 4;
