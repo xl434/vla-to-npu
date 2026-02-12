@@ -185,20 +185,51 @@ float get_sigmoid_approx(float x) {
   return y0 + frac * (y1 - y0);
 }
 
+// vector version
+template<int vec_factor>
+aie::vector<float, vec_factor> get_sigmoid_approx_vec(const aie::vector<float, vec_factor>& x) {
+  aie::vector<float, vec_factor> y;
+  #pragma unroll
+  for (int lane = 0; lane < vec_factor; ++lane){
+    y[lane] = get_sigmoid_approx(x[lane]);
+  }
+  return y;
+}
+
 extern "C" {
 
-void silu_float32(float input_x[4][768], float output_x[4][768]) {
+// void silu_float32(float input_x[4][768], float output_x[4][768]) {
+//   constexpr int SEQ_TILE = 4;
+//   constexpr int FEATURE_DIM_TILE = 768;
+//   constexpr int vec_factor = 8;
+
+//   for (int iter = 0; iter < SEQ_TILE; iter++) {
+//     float *__restrict input_ptr = &input_x[iter][0];
+//     float *__restrict output_ptr = &output_x[iter][0];
+//     for (int i = 0; i < FEATURE_DIM_TILE; i++) {
+//       float x = input_ptr[i];
+//       float sigmoid = get_sigmoid_approx(x);
+//       // float sigmoid = 1.0f / (1.0f + exp_neg);
+//       output_ptr[i] = x * sigmoid;
+//     }
+//   }
+// }
+
+void silu_float32_vec(float input_x[4][768], float output_x[4][768]) {
   constexpr int SEQ_TILE = 4;
   constexpr int FEATURE_DIM_TILE = 768;
+  constexpr int vec_factor = 8;
+  using vec_t = aie::vector<float, vec_factor>;
 
   for (int iter = 0; iter < SEQ_TILE; iter++) {
     float *__restrict input_ptr = &input_x[iter][0];
     float *__restrict output_ptr = &output_x[iter][0];
-    for (int i = 0; i < FEATURE_DIM_TILE; i++) {
-      float x = input_ptr[i];
-      float sigmoid = get_sigmoid_approx(x);
+    for (int i = 0; i < FEATURE_DIM_TILE; i+=vec_factor) {
+      vec_t x = aie::load_v<vec_factor>(input_ptr + i);
+      vec_t sigmoid = get_sigmoid_approx_vec<vec_factor>(x);
+      vec_t y = aie::mul(x, sigmoid);
       // float sigmoid = 1.0f / (1.0f + exp_neg);
-      output_ptr[i] = x * sigmoid;
+      aie::store_v(output_ptr + i, y);
     }
   }
 }
