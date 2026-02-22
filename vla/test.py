@@ -29,69 +29,70 @@ TEXT = 960
 
 Ty = float32
 
-linear_in_layout = [S(0), R]
-linear_out_layout = [R, S(0)]
-
-@df.region()
-def copy(A: Ty[4, EMBD], C: Ty[1, EMBD*4]):
-    @df.kernel(mapping=[4], args=[A,C])
-    def mod(
-        local_A: Ty[4, EMBD] @ linear_in_layout,
-        local_C: Ty[1, EMBD*4] @ linear_out_layout,
-    ):
-        local_C[:,:] = local_A[:,:]
-
 # ----------------------------------------------------------------
 # Linear
 # ----------------------------------------------------------------
-LINEAR_M, LINEAR_N, LINEAR_K = 64, 64, 64
-linear_A_layout = [S(0), R]
-linear_B_layout = [R, S(1)]
-linear_C_layout = [S(0), S(1)]
+LINEAR_M, LINEAR_N, LINEAR_K = 1, 8, 768
+input_layout = [R, R]
+output_layout = [R, S(1)]
 
 @df.region()
 def linear_matmul_kernel(A: Ty[LINEAR_M, LINEAR_K], B: Ty[LINEAR_K, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
-    @df.kernel(mapping=[4, 4], args=[A, B, C])
+    @df.kernel(mapping=[1], args=[A, B, C])
     def gemm(
-        local_A: Ty[LINEAR_M, LINEAR_K] @ linear_A_layout,
-        local_B: Ty[LINEAR_K, LINEAR_N] @ linear_B_layout,
-        local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_A: Ty[LINEAR_M, LINEAR_K] @ input_layout,
+        local_B: Ty[LINEAR_K, LINEAR_N] @ input_layout,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ input_layout,
     ):
-        local_C[:, :] = allo.matmul(local_A, local_B)
+        tmp = allo.matmul(local_A, local_B)
+        for i in range(8):
+            local_C[0, i] = tmp[0, i]
 
+M, N = 64, 64
+accum_layout = [S(0), S(1)]
 @df.region()
-def linear_accumulate_kernel(A: Ty[LINEAR_M, LINEAR_N], B: Ty[LINEAR_M, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
-    @df.kernel(mapping=[2, 4], args=[A, B, C])
+def linear_accumulate_kernel(A: Ty[M, N], B: Ty[M, N], C: Ty[M, N]):
+    @df.kernel(mapping=[2,4], args=[A, B, C])
     def core(
-        local_A: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-        local_B: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
-        local_C: Ty[LINEAR_M, LINEAR_N] @ linear_C_layout,
+        local_A: Ty[M, N] @ accum_layout,
+        local_B: Ty[M, N] @ accum_layout,
+        local_C: Ty[M, N] @ accum_layout,
     ):
         local_C[:, :] = allo.add(local_A, local_B)
 
 # ##############################################################
 # BUILD
 # ##############################################################
-copy_mod = df.build(copy, target="aie", project="copy.prj")
 linear_matmul_mod = df.build(linear_matmul_kernel, target="aie", project="linear_matmul.prj")
 linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie", project="linear_accumulate.prj")
 
 # ##############################################################
 # TOOL
 # ##############################################################
-def pixel_shuffle(A, C):
+def connector(A, B, C):
+    arr = np.zeros((16, 64, 240))
     for i in range(NEW_SEQ):
         offset = (i // 8) * 128 + (i % 8) * 4
-        for k in range(4):
-            tile_A = A[ 
-                offset + k * 32 : offset + k * 32 + 4,
-                :
-            ]
-            tile_C = C[
-                i: i + 1,
-                k * EMBD * 4 : (k + 1) * (EMBD * 4)
-            ]
-            copy_mod(tile_A, tile_C)
+        tile_C = np.zeros((NEW_SEQ, TEXT)).astype(np.float32)
+        for j in range(4):
+            for k in range(4):
+                for l in range(120):
+                    tile_A = A[ 
+                        offset + j * 32 + k : offset + j * 32 + k + 1,
+                        l*8:(l+1) * 8
+                    ]
+                    tile_B = B[
+                        (j * 4 + k) * EMBD : (j * 4 + k + 1) * EMBD,
+                        l*8:(l+1) * 8
+                    ]
+                    tile_C = arr[j * 4 + k, i:i+1, l*8:(l+1) * 8]
+                    print(tile_A.shape, tile_B.shape, tile_C.shape)
+                    linear_matmul_mod(tile_A, tile_B, tile_C)
+
+    C = np.zeros((M, N)).astype(float32)
+    for a in arr:
+        for i in range(15):
+            linear_accumulate_mod(a, C[:,i*64:(i+1)*64], C[:,i*64:(i+1)*64])
 
 def linear_projection(A, B, C, M, N, K):
     for i in range(M // LINEAR_M):
@@ -123,16 +124,11 @@ def linear_projection(A, B, C, M, N, K):
 def connector_block(x_fp32: np.ndarray, params: dict):
     x = x_fp32.astype(np.float32)
     x = x.reshape(SEQ, EMBD)
-    x_shuffled = np.zeros((NEW_SEQ, NEW_EMBD), dtype=np.float32)
     out = np.zeros((NEW_SEQ, TEXT), dtype=np.float32)
     t0 = time.time()
-    pixel_shuffle(x, x_shuffled)
+    connector(x, params["W"], out)
     t1 = time.time()
-    linear_projection(x_shuffled, params["W"], out, NEW_SEQ, TEXT, NEW_EMBD)
-    t2 = time.time()
-    print("pixel shuffle execution time: " + str(t1 - t0))
-    print("matmul execution time: " + str(t2 - t1))
-    print("total execution time: " + str(t2 - t0))
+    print("total execution time: " + str(t1 - t0))
     return out
 
 # ##############################################################
