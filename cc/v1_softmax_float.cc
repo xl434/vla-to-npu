@@ -69,48 +69,113 @@ float get_exp(float x) {
 
 extern "C" {
 
-void softmax_float32(float attention_score[32][64],
-                     float attn_weights[32][64]) {
-  constexpr int TILE_ROWS = 32;
-  constexpr int SEQ_COLS  = 64;
-  constexpr int VEC_SIZE  = 32;
+// void softmax_float32(float attention_score[32][64],
+//                      float attn_weights[32][64]) {
+//   constexpr int TILE_ROWS = 32;
+//   constexpr int SEQ_COLS  = 64;
+//   constexpr int VEC_SIZE  = 32;
 
-  for (int r = 0; r < TILE_ROWS; ++r) {
-    float* __restrict in_row  = &attention_score[r][0];
-    float* __restrict out_row = &attn_weights[r][0];
+//   for (int r = 0; r < TILE_ROWS; ++r) {
+//     float* __restrict in_row  = &attention_score[r][0];
+//     float* __restrict out_row = &attn_weights[r][0];
 
-    // Load two 32-wide vectors (64 columns total)
-    aie::vector<float, VEC_SIZE> v0 = aie::load_v<VEC_SIZE>(in_row);
-    aie::vector<float, VEC_SIZE> v1 = aie::load_v<VEC_SIZE>(in_row + VEC_SIZE);
+//     // Load two 32-wide vectors (64 columns total)
+//     aie::vector<float, VEC_SIZE> v0 = aie::load_v<VEC_SIZE>(in_row);
+//     aie::vector<float, VEC_SIZE> v1 = aie::load_v<VEC_SIZE>(in_row + VEC_SIZE);
 
-    // Row-wise max (log-sum-exp)
-    float row_max = aie::reduce_max(v0);
-    row_max = std::max(row_max, aie::reduce_max(v1));
+//     // Row-wise max (log-sum-exp)
+//     float row_max = aie::reduce_max(v0);
+//     row_max = std::max(row_max, aie::reduce_max(v1));
 
-    v0 = aie::add(v0, -row_max);
-    v1 = aie::add(v1, -row_max);
+//     v0 = aie::add(v0, -row_max);
+//     v1 = aie::add(v1, -row_max);
 
-    // Exp and sum (same LUT-based approximation)
+//     // Exp and sum (same LUT-based approximation)
+//     float sum_exp = 0.0f;
+//     for (int k = 0; k < VEC_SIZE; ++k) {
+//       float e = get_exp(v0[k]);
+//       sum_exp += e;
+//       out_row[k] = e;
+//     }
+//     for (int k = 0; k < VEC_SIZE; ++k) {
+//       float e = get_exp(v1[k]);
+//       sum_exp += e;
+//       out_row[VEC_SIZE + k] = e;
+//     }
+
+//     // Normalize
+//     float inv = 1.0f / sum_exp;
+//     aie::vector<float, VEC_SIZE> w0 = aie::load_v<VEC_SIZE>(out_row);
+//     aie::vector<float, VEC_SIZE> w1 = aie::load_v<VEC_SIZE>(out_row + VEC_SIZE);
+//     w0 = aie::mul(w0, inv);
+//     w1 = aie::mul(w1, inv);
+//     aie::store_v(out_row,                w0);
+//     aie::store_v(out_row + VEC_SIZE,     w1);
+//   }
+// }
+
+void softmax_float32_seq1024(float attention_score[4][512],
+                     float attn_weights[4][512]) {
+  // Logical shape: [2][1024], stored as [4][512].
+  // Rows 0,1 form logical row 0 (1024 elements).
+  // Rows 2,3 form logical row 1 (1024 elements).
+  constexpr int LOGICAL_ROWS = 2;
+  constexpr int HALF_COLS    = 512;
+  constexpr int VEC_SIZE     = 32;
+  constexpr int NUM_VECS     = HALF_COLS / VEC_SIZE; // 16
+
+  for (int lr = 0; lr < LOGICAL_ROWS; ++lr) {
+    float* __restrict in_lo  = &attention_score[lr * 2    ][0]; // first 512
+    float* __restrict in_hi  = &attention_score[lr * 2 + 1][0]; // second 512
+    float* __restrict out_lo = &attn_weights[lr * 2    ][0];
+    float* __restrict out_hi = &attn_weights[lr * 2 + 1][0];
+
+    // Pass 1: find max across all 1024 elements
+    aie::vector<float, VEC_SIZE> v = aie::load_v<VEC_SIZE>(in_lo);
+    float row_max = aie::reduce_max(v);
+    for (int i = 1; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_lo + i * VEC_SIZE);
+      row_max = std::max(row_max, aie::reduce_max(v));
+    }
+    for (int i = 0; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_hi + i * VEC_SIZE);
+      row_max = std::max(row_max, aie::reduce_max(v));
+    }
+
+    // Pass 2: exp(x - max) and accumulate sum across 1024 elements
     float sum_exp = 0.0f;
-    for (int k = 0; k < VEC_SIZE; ++k) {
-      float e = get_exp(v0[k]);
-      sum_exp += e;
-      out_row[k] = e;
+    for (int i = 0; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_lo + i * VEC_SIZE);
+      v = aie::add(v, -row_max);
+      for (int k = 0; k < VEC_SIZE; ++k) {
+        float e = get_exp(v[k]);
+        sum_exp += e;
+        out_lo[i * VEC_SIZE + k] = e;
+      }
     }
-    for (int k = 0; k < VEC_SIZE; ++k) {
-      float e = get_exp(v1[k]);
-      sum_exp += e;
-      out_row[VEC_SIZE + k] = e;
+    for (int i = 0; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_hi + i * VEC_SIZE);
+      v = aie::add(v, -row_max);
+      for (int k = 0; k < VEC_SIZE; ++k) {
+        float e = get_exp(v[k]);
+        sum_exp += e;
+        out_hi[i * VEC_SIZE + k] = e;
+      }
     }
 
-    // Normalize
+    // Pass 3: normalize all 1024 elements
     float inv = 1.0f / sum_exp;
-    aie::vector<float, VEC_SIZE> w0 = aie::load_v<VEC_SIZE>(out_row);
-    aie::vector<float, VEC_SIZE> w1 = aie::load_v<VEC_SIZE>(out_row + VEC_SIZE);
-    w0 = aie::mul(w0, inv);
-    w1 = aie::mul(w1, inv);
-    aie::store_v(out_row,                w0);
-    aie::store_v(out_row + VEC_SIZE,     w1);
+    for (int i = 0; i < NUM_VECS; ++i) {
+      aie::vector<float, VEC_SIZE> w = aie::load_v<VEC_SIZE>(out_lo + i * VEC_SIZE);
+      w = aie::mul(w, inv);
+      aie::store_v(out_lo + i * VEC_SIZE, w);
+    }
+    for (int i = 0; i < NUM_VECS; ++i) {
+      aie::vector<float, VEC_SIZE> w = aie::load_v<VEC_SIZE>(out_hi + i * VEC_SIZE);
+      w = aie::mul(w, inv);
+      aie::store_v(out_hi + i * VEC_SIZE, w);
+    }
   }
 }
+
 } // extern "C"
