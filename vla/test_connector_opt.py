@@ -33,16 +33,15 @@ Ty = float32
 # Linear
 # ----------------------------------------------------------------
 LINEAR_M, LINEAR_N, LINEAR_K = 1, 8, 768
-input_layout = [R, R]
-output_layout = [R, S(1)]
+matmul_layout = [R, R]
 
 @df.region()
 def linear_matmul_kernel(A: Ty[LINEAR_M, LINEAR_K], B: Ty[LINEAR_K, LINEAR_N], C: Ty[LINEAR_M, LINEAR_N]):
     @df.kernel(mapping=[1], args=[A, B, C])
     def gemm(
-        local_A: Ty[LINEAR_M, LINEAR_K] @ input_layout,
-        local_B: Ty[LINEAR_K, LINEAR_N] @ input_layout,
-        local_C: Ty[LINEAR_M, LINEAR_N] @ input_layout,
+        local_A: Ty[LINEAR_M, LINEAR_K] @ matmul_layout,
+        local_B: Ty[LINEAR_K, LINEAR_N] @ matmul_layout,
+        local_C: Ty[LINEAR_M, LINEAR_N] @ matmul_layout,
     ):
         tmp = allo.matmul(local_A, local_B)
         for i in range(8):
@@ -70,29 +69,46 @@ linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie", project
 # TOOL
 # ##############################################################
 def connector(A, B, C):
-    arr = np.zeros((16, 64, 240))
+    # arr[16 partials, NEW_SEQ=64 rows, TEXT=960 cols]
+    arr = np.zeros((16, NEW_SEQ, TEXT), dtype=np.float32)
+
+    # Precompute all source row indices for each (i, j, k)
+    # to avoid recomputing offset inside the hot loop
     for i in range(NEW_SEQ):
         offset = (i // 8) * 128 + (i % 8) * 4
-        tile_C = np.zeros((NEW_SEQ, TEXT)).astype(np.float32)
         for j in range(4):
             for k in range(4):
-                for l in range(120):
-                    tile_A = A[ 
-                        offset + j * 32 + k : offset + j * 32 + k + 1,
-                        l*8:(l+1) * 8
-                    ]
-                    tile_B = B[
-                        (j * 4 + k) * EMBD : (j * 4 + k + 1) * EMBD,
-                        l*8:(l+1) * 8
-                    ]
-                    tile_C = arr[j * 4 + k, i:i+1, l*8:(l+1) * 8]
-                    print(tile_A.shape, tile_B.shape, tile_C.shape)
-                    linear_matmul_mod(tile_A, tile_B, tile_C)
+                src_row     = offset + j * 32 + k
+                partial_idx = j * 4 + k
+                tile_A      = A[src_row : src_row + 1, :]  # (1, 768) — no copy, read-only
 
-    C = np.zeros((M, N)).astype(float32)
-    for a in arr:
-        for i in range(15):
-            linear_accumulate_mod(a, C[:,i*64:(i+1)*64], C[:,i*64:(i+1)*64])
+                for l in range(TEXT // LINEAR_N):           # 80 iterations
+                    col_start = l * LINEAR_N
+                    col_end   = col_start + LINEAR_N
+
+                    tile_B = B[
+                        partial_idx * EMBD : (partial_idx + 1) * EMBD,
+                        col_start : col_end,
+                    ]                                       # (768, 12) — no copy, read-only
+                    tile_C = arr[partial_idx, i : i + 1, col_start : col_end]  # (1, 12) — write in-place
+
+                    linear_matmul_mod(tile_A, tile_B, tile_C)
+                    # tile_C is a view into arr, so result lands directly — no copy back needed
+
+    # Accumulate 16 partial sums into C (64, 960)
+    # Process in (64, 64) tiles to match compiled shape of linear_accumulate_mod
+    C[:] = arr[0]
+    for partial_idx in range(1, 16):
+        for t in range(TEXT // N):                          # 960 / 64 = 15
+            col_start = t * N
+            col_end   = col_start + N
+            result    = np.zeros((M, N), dtype=np.float32)
+            linear_accumulate_mod(
+                arr[partial_idx, :, col_start : col_end],   # (64, 64)
+                C[:, col_start : col_end],                  # (64, 64)
+                result,
+            )
+            C[:, col_start : col_end] = result
 
 def linear_projection(A, B, C, M, N, K):
     for i in range(M // LINEAR_M):
