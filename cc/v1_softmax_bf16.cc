@@ -151,4 +151,70 @@ void softmax_bf16_32_64(bfloat16 attention_score[32][64],
     aie::store_v(out_row + VEC_SIZE,     w1);
   }
 }
+
+// Softmax for SEQ=1024 in bfloat16
+// Physical layout: [4][512] per core = 2 logical rows of 1024 elements each.
+// Rows 0,1 form logical row 0 (1024 elements).
+// Rows 2,3 form logical row 1 (1024 elements).
+void softmax_bf16_seq1024(bfloat16 attention_score[4][512],
+                          bfloat16 attn_weights[4][512]) {
+  constexpr int LOGICAL_ROWS = 2;
+  constexpr int HALF_COLS    = 512;
+  constexpr int VEC_SIZE     = 32;
+  constexpr int NUM_VECS     = HALF_COLS / VEC_SIZE; // 16
+
+  for (int lr = 0; lr < LOGICAL_ROWS; ++lr) {
+    bfloat16* __restrict in_lo  = &attention_score[lr * 2    ][0]; // first 512
+    bfloat16* __restrict in_hi  = &attention_score[lr * 2 + 1][0]; // second 512
+    bfloat16* __restrict out_lo = &attn_weights[lr * 2    ][0];
+    bfloat16* __restrict out_hi = &attn_weights[lr * 2 + 1][0];
+
+    // Pass 1: find max across all 1024 elements
+    aie::vector<bfloat16, VEC_SIZE> v = aie::load_v<VEC_SIZE>(in_lo);
+    bfloat16 row_max = aie::reduce_max(v);
+    for (int i = 1; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_lo + i * VEC_SIZE);
+      row_max = std::max(row_max, aie::reduce_max(v));
+    }
+    for (int i = 0; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_hi + i * VEC_SIZE);
+      row_max = std::max(row_max, aie::reduce_max(v));
+    }
+
+    // Pass 2: exp(x - max) and accumulate sum across 1024 elements
+    bfloat16 sum_exp = 0.0f;
+    for (int i = 0; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_lo + i * VEC_SIZE);
+      v = aie::add(v, -row_max);
+      for (int k = 0; k < VEC_SIZE; ++k) {
+        bfloat16 e = get_exp(v[k]);
+        sum_exp += e;
+        out_lo[i * VEC_SIZE + k] = e;
+      }
+    }
+    for (int i = 0; i < NUM_VECS; ++i) {
+      v = aie::load_v<VEC_SIZE>(in_hi + i * VEC_SIZE);
+      v = aie::add(v, -row_max);
+      for (int k = 0; k < VEC_SIZE; ++k) {
+        bfloat16 e = get_exp(v[k]);
+        sum_exp += e;
+        out_hi[i * VEC_SIZE + k] = e;
+      }
+    }
+
+    // Pass 3: normalize all 1024 elements
+    bfloat16 inv = 1.0f / sum_exp;
+    for (int i = 0; i < NUM_VECS; ++i) {
+      aie::vector<bfloat16, VEC_SIZE> w = aie::load_v<VEC_SIZE>(out_lo + i * VEC_SIZE);
+      w = aie::mul(w, inv);
+      aie::store_v(out_lo + i * VEC_SIZE, w);
+    }
+    for (int i = 0; i < NUM_VECS; ++i) {
+      aie::vector<bfloat16, VEC_SIZE> w = aie::load_v<VEC_SIZE>(out_hi + i * VEC_SIZE);
+      w = aie::mul(w, inv);
+      aie::store_v(out_hi + i * VEC_SIZE, w);
+    }
+  }
+}
+
 }
