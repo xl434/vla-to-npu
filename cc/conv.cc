@@ -24,14 +24,19 @@ extern "C"
 
         event0();
 
-        for (int ph = 0; ph < NUM_PATCHES_H; ph++)
+        for (int ph = 0; ph < NUM_PATCHES_H; ++ph)
         {
-            for (int pw = 0; pw < NUM_PATCHES_W; pw++)
+            for (int pw = 0; pw < NUM_PATCHES_W; ++pw)
             {
                 float *__restrict output_ptr = &output[ph][pw];
-                aie::accum<accfloat, vec_factor> acc = aie::zeros<accfloat, vec_factor>();
+                float *input_ptr0 = &input[ph * PATCH_SIZE + 0][pw * PATCH_SIZE];
+                float *kernel_ptr0 = &kernel[0][0];
+                vec_t x0 = aie::load_v<vec_factor>(input_ptr0);
+                vec_t k0 = aie::load_v<vec_factor>(kernel_ptr0);
+                aie::accum<accfloat, vec_factor> acc = aie::mul(x0, k0);
 
-                for (int kh = 0; kh < PATCH_SIZE; kh++)
+
+                for (int kh = 1; kh < PATCH_SIZE; ++kh)
                 {
                     float *__restrict input_ptr = &input[ph * PATCH_SIZE + kh][pw * PATCH_SIZE];
                     float *__restrict kernel_ptr = &kernel[kh][0];
@@ -48,5 +53,5 @@ extern "C"
 
         event1();
     }
-
+        
 } // extern "C"
