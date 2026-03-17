@@ -120,7 +120,6 @@ def linear_projection(A, B, C, M, N, K):
 # Weight matrix is size [12288, 960]
 def connector_block(x_fp32: np.ndarray, params: dict):
     x = x_fp32.astype(np.float32)
-    x = x.reshape(SEQ, EMBD)
     x_shuffled = np.zeros((NEW_SEQ, NEW_EMBD), dtype=np.float32)
     out = np.zeros((NEW_SEQ, TEXT), dtype=np.float32)
     t0 = time.time()

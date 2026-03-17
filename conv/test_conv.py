@@ -1,7 +1,5 @@
-import time
 import torch
 import torch.nn as nn
-import allo
 from allo.ir.types import float32
 import allo.dataflow as df
 import numpy as np

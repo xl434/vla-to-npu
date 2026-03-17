@@ -27,6 +27,15 @@ Designed by Hugging Face.
 └──────────────────────────────┘
 """
 
+from preprocessing import (
+    CHANNELS as CH, PIX_LEN as PIX, KERNEL_DIM,
+    preprocessing_block
+)
+
+from connector import (
+    NEW_SEQ as SEQ_C, NEW_EMBD as EMBD_C, TEXT, 
+    connector_block
+)
 
 from llama_block_rope import (
     SEQ as SEQ_MM, EMBD as EMBD_MM, Q_H, KV_H, HEAD_DIM,
@@ -58,7 +67,16 @@ def main():
 
     def rand_mat(m, n): return rng.standard_normal((m, n)).astype(np.float32)
     def rand_vec(n):    return rng.standard_normal((n,)).astype(np.float32)
+    def rand_mat_norm(m, n): return rng.random((m, n)).astype(np.float32)
+    def rand_vec_norm(n):    return rng.random((n,)).astype(np.float32)
 
+    params_proc = dict(
+        kernel=rand_mat(KERNEL_DIM, KERNEL_DIM)
+    )
+
+    params_con = dict(
+        W=rand_mat(EMBD_C, TEXT)
+    )
     # Vision params (ViT-style)
     params_vit = dict(
         Wq=rand_mat(EMBD_V, EMBD_V), Wk=rand_mat(EMBD_V, EMBD_V), Wv=rand_mat(EMBD_V, EMBD_V),
@@ -93,7 +111,12 @@ def main():
         W_norm_1=rand_vec(EMBD_T),
         W_norm_2=rand_vec(EMBD_T),
     )
+    image_rgb = rng.rand_mat_norm((CH, PIX, PIX), dtype=np.float32)
 
+    conv_emb = preprocessing_block(image_rgb, params_proc)
+    vision_emb = vision_block(conv_emb, params_vit)
+    con_emb = connector_block(vision_emb, params_con)
+    
     # -----------------------------
     # 1) Inputs (already-embedded)
     # -----------------------------
