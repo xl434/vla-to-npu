@@ -1,8 +1,8 @@
 import time
 import torch
 import torch.nn as nn
-import allo
-from allo.ir.types import float32
+from allo.ir.types import bfloat16
+from ml_dtypes import bfloat16 as ml_bfloat16
 import allo.dataflow as df
 import numpy as np
 from allo.memory import Layout
@@ -24,11 +24,11 @@ PIX_LEN = 512
 SEQ = 1024
 EMBD_DIM = 768
 
-Ty = float32
+Ty = bfloat16
 
 conv = ExternalModule(
     top="conv",
-    impl_path=KERNEL_LIB_PATH + "conv.cc",
+    impl_path=KERNEL_LIB_PATH + "conv_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )
@@ -46,18 +46,6 @@ def conv_kernel(input: Ty[INPUT_DIM, INPUT_DIM], kernel: Ty[KERNEL_DIM, KERNEL_D
     ):
         conv(local_input, local_kernel, local_output)
 
-acc_format = [S(0), S(1)]
-
-@df.region()
-def linear_accumulate_kernel(A: Ty[32, 32], B: Ty[32, 32], C: Ty[32, 32]):
-    @df.kernel(mapping=[2, 4], args=[A, B, C])
-    def core(
-        local_A: Ty[32, 32] @ acc_format,
-        local_B: Ty[32, 32] @ acc_format,
-        local_C: Ty[32, 32] @ acc_format,
-    ):
-        local_C[:, :] = allo.add(local_A, local_B)
-
 linear_in_layout = [S(0), R]
 linear_out_layout = [R, S(0)]
 
@@ -71,26 +59,21 @@ def copy(A: Ty[8, 32], C: Ty[1, 256]):
         local_C[:,:] = local_A[:,:]
 
 conv_mod = df.build(conv_kernel, target="aie", project="conv.prj")
-linear_accumulate_mod = df.build(linear_accumulate_kernel, target="aie", project="linear_accumulate.prj")
 copy_mod = df.build(copy, target="aie", project="copy.prj")
 
 def conv2d(A, B, C):
     t0 = time.time()
-    embd = np.zeros((32, 32, EMBD_DIM)).astype(np.float32)
-    out = np.zeros((1, SEQ, EMBD_DIM)).astype(np.float32)
+    embd = np.zeros((32, 32, EMBD_DIM)).astype(ml_bfloat16)
+    out = np.zeros((1, SEQ, EMBD_DIM)).astype(ml_bfloat16)
     for i in range(EMBD_DIM):
         for j in range(CHANNELS):
-            tmp = np.zeros((32, 32)).astype(np.float32)
+            tmp = np.zeros((32, 32)).astype(ml_bfloat16)
             for k in range(2):
                 for l in range(2):
                     A_tile = A[j, k*INPUT_DIM:(k+1)*INPUT_DIM, l*INPUT_DIM:(l+1)*INPUT_DIM]
                     B_tile = B[i, j, :, :]
                     conv_mod(A_tile, B_tile, tmp[k*OUTPUT_DIM:(k+1)*OUTPUT_DIM, l*OUTPUT_DIM:(l+1)*OUTPUT_DIM])
-            linear_accumulate_mod(
-                embd[:, :, i],
-                tmp,
-                embd[:, :, i]
-            )
+            embd[:,:,i] += tmp
         for k in range(4):
             copy_mod(embd[k*8:(k+1)*8, :, i], out[:, k*256:(k+1)*256, i])
     C[:, :] = out[0]
@@ -98,8 +81,8 @@ def conv2d(A, B, C):
     print("execution time: " + str(t1 - t0))
     
 def preprocessing_block(x_fp32: np.ndarray, params: dict):
-    x = x_fp32.astype(np.float32)
-    out = np.zeros((SEQ, EMBD_DIM), dtype=np.float32)
+    x = x_fp32.astype(ml_bfloat16)
+    out = np.zeros((SEQ, EMBD_DIM), dtype=ml_bfloat16)
     conv2d(x, params["kernel"], out)
     return out
 
@@ -114,20 +97,20 @@ if __name__ == "__main__":
     NUM_PATCHES  = (IN_H // PATCH_SIZE) * (IN_W // PATCH_SIZE)  # 1024
 
     # Random input image [3, 512, 512]
-    input_np = np.random.rand(IN_CHANNELS, IN_H, IN_W).astype(np.float32)
+    input_np = np.random.rand(IN_CHANNELS, IN_H, IN_W).astype(ml_bfloat16)
 
     # Random kernel [768, 3, 16, 16]
-    kernel_np = np.random.rand(EMBED_DIM, IN_CHANNELS, PATCH_SIZE, PATCH_SIZE).astype(np.float32)
+    kernel_np = np.random.rand(EMBED_DIM, IN_CHANNELS, PATCH_SIZE, PATCH_SIZE).astype(ml_bfloat16)
 
     # Output buffer [1024, 768]
-    output_np = np.zeros((NUM_PATCHES, EMBED_DIM), dtype=np.float32)
+    output_np = np.zeros((NUM_PATCHES, EMBED_DIM), dtype=ml_bfloat16)
 
     # Run AIE kernel
     conv2d(input_np, kernel_np, output_np)
 
     # Reference: PyTorch Conv2d with same weights
     # PyTorch expects input as [batch, channels, H, W]
-    input_torch = torch.tensor(input_np, dtype=torch.float32).unsqueeze(0)  # [1, 3, 512, 512]
+    input_torch = torch.tensor(input_np.astype(np.float32), dtype=torch.float32).unsqueeze(0)  # [1, 3, 512, 512]
 
     conv = nn.Conv2d(
         in_channels=IN_CHANNELS,
@@ -139,7 +122,7 @@ if __name__ == "__main__":
 
     # Set conv weights to our kernel
     with torch.no_grad():
-        conv.weight = nn.Parameter(torch.tensor(kernel_np, dtype=torch.float32))
+        conv.weight = nn.Parameter(torch.tensor(kernel_np.astype(np.float32), dtype=torch.float32))
         conv.bias   = nn.Parameter(torch.zeros(EMBED_DIM))  # no bias
 
     # Run PyTorch conv
@@ -152,6 +135,7 @@ if __name__ == "__main__":
     out_torch = out_torch.flatten(1)         # [768, 1024]
     out_torch = out_torch.transpose(0, 1)    # [1024, 768]
     expected  = out_torch.numpy().astype(np.float32)
+    output_np = output_np.astype(np.float32)
 
     # Check shapes
     assert output_np.shape == expected.shape, \
