@@ -14,16 +14,18 @@
 #define EPS 1e-6f // epsilon
 
 
-template <typename T_in, typename T_out, const int SEQ_LEN, const int HIDDEN>
-void rms_norm_single_batch(T_in *input_tensor, T_in *weight,
-                        T_out *output_tensor) {
-    constexpr int vec_factor = 16;
-    using vec_t = aie::vector<T_in, vec_factor>;
+template <const int SEQ_LEN, const int HIDDEN>
+void rms_norm_single_batch(bfloat16 *input_tensor, bfloat16 *weight,
+                        bfloat16 *output_tensor) {
+    constexpr int vec_factor = 32;
+    using vec_t = aie::vector<bfloat16, vec_factor>;
+    using fvec_t = aie::vector<float, vec_factor>;
+    
     event0();
     for (int iter = 0; iter < SEQ_LEN; iter++) {
-        T_in *__restrict input_ptr = input_tensor;
-        T_in *__restrict weight_ptr = weight;
-        T_out *__restrict output_ptr = output_tensor;
+        bfloat16 *__restrict input_ptr = input_tensor;
+        bfloat16 *__restrict weight_ptr = weight;
+        bfloat16 *__restrict output_ptr = output_tensor;
         float square_sum = 0.0f;
         const int F = HIDDEN / vec_factor;
         for (int i = 0; i < F; i++) {
@@ -33,7 +35,7 @@ void rms_norm_single_batch(T_in *input_tensor, T_in *weight,
         square_sum += aie::reduce_add(square_vec);
         }
         vec_t square_sum_vec =
-            aie::broadcast<T_in, vec_factor>(square_sum / HIDDEN + EPS);
+            aie::broadcast<bfloat16, vec_factor>(square_sum / HIDDEN + EPS);
         vec_t rms = aie::invsqrt(square_sum_vec);
         input_ptr = input_tensor;
         for (int i = 0; i < F; i++) {
@@ -54,8 +56,8 @@ void rms_norm_single_batch(T_in *input_tensor, T_in *weight,
 
 extern "C" {
 
-void rms_norm(float A_in[4][768], float B_in[768], float C_out[4][768]) {
-rms_norm_single_batch<float, float, 4, 768>(&A_in[0][0], B_in, &C_out[0][0]);
+void rms_norm(bfloat16 A_in[4][768], bfloat16 B_in[768], bfloat16 C_out[4][768]) {
+rms_norm_single_batch<4, 768>(&A_in[0][0], B_in, &C_out[0][0]);
 }
 
 } // extern "C"
