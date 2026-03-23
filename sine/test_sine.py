@@ -2,28 +2,46 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import time
 import numpy as np
 import torch
+import ml_dtypes
 import allo.dataflow as df
 from allo.memory import Layout
-from allo.ir.types import float32
+from allo.ir.types import bfloat16
 from allo.backend.aie.external_kernel import ExternalModule
 
 # Matrix shape: rows=32, cols=64  (matches sin_float32 signature: [32][64])
 S = Layout.Shard
 R = Layout.Replicate
 Ly = [S(0), S(1)]
-Ty = float32
+Ty = bfloat16
 seq_tile = 32       # rows
 feature_tile = 64   # cols
 
-RTOL = 1e-3
-ATOL = 1e-4
+# RTOL = 1e-3
+# ATOL = 1e-4
+RTOL = 1e-2
+ATOL = 1e-3
+
+def _mismatch_stats(actual: np.ndarray, expected: np.ndarray, rtol: float, atol: float):
+    """
+    Return (mismatch_pct, mismatch_count, total_count)
+    using the same per-element rule as numpy.allclose/assert_allclose.
+    """
+    diff = np.abs(actual - expected)
+    tol = atol + rtol * np.abs(expected)
+    mismatch_mask = diff > tol
+
+    total = mismatch_mask.size
+    mismatches = int(np.count_nonzero(mismatch_mask))
+    mismatch_pct = 100.0 * mismatches / total if total else 0.0
+    return mismatch_pct, mismatches, total
 
 KERNEL_LIB_PATH = "../cc/"
 def _test_sine_single_tile():
     sine = ExternalModule(
-        top="sin_float32",
+        top="sin_bfloat16",
         impl_path=KERNEL_LIB_PATH + "sine.cc",
         input_idx=[0],
         output_idx=[1],
@@ -39,26 +57,40 @@ def _test_sine_single_tile():
             sine(local_input_x, local_output_x)
 
     torch.manual_seed(0)
-    input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.float32) * 40.0) - 20.0  # ~U[-20,20]
+    input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.bfloat16) * 40.0) - 20.0
     ref_out = torch.sin(input_tensor)
+    
+    # CPU execution time
+    with torch.no_grad():
+        start = time.perf_counter()
+        end = time.perf_counter()
+    cpu_time_us = (end - start) * 1000000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         mod = df.build(top, target="aie")
-        output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
-        mod(input_tensor.cpu().numpy(), output_allo)
+        output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
+        input_numpy = input_tensor.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16)
+        ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
+
+        mod(input_numpy, output_allo)
+
+        print(f"CPU execution time: {cpu_time_us:.2f} us")
+        output_allo = output_allo.astype(ml_dtypes.bfloat16)
         try:
-            np.testing.assert_allclose(output_allo, ref_out.cpu().numpy(), rtol=RTOL, atol=ATOL)
+            np.testing.assert_allclose(output_allo, ref_numpy, rtol=RTOL, atol=ATOL)
             print(f"PASSED sine! (rtol={RTOL}, atol={ATOL})")
         except AssertionError as e:
             # Debug: print summary and a few worst mismatches
-            diff = np.abs(output_allo - ref_out.cpu().numpy())
+            pct, mism, total = _mismatch_stats(output_allo, ref_numpy, RTOL, ATOL)
+            diff    = np.abs(output_allo - ref_numpy)
             max_idx = np.unravel_index(np.argmax(diff), diff.shape)
             print("Sine mismatch detected.")
+            print(f"Mismatch rate: {pct:.4f}% ({mism}/{total})  (rtol={RTOL}, atol={ATOL})")
             print(f"Max abs diff = {diff[max_idx]:.6e} at index {max_idx}")
             r, c = max_idx
             print(f"Input        = {input_tensor[r, c].item():.6f}")
             print(f"Allo output  = {output_allo[r, c]:.6f}")
-            print(f"Torch output = {ref_out[r, c].item():.6f}")
+            print(f"Torch output = {ref_numpy[r, c]:.6f}")
     else:
         print("MLIR_AIE_INSTALL_DIR unset. Skipping AIE backend run. "
               "Set it to execute the Allo kernel.")
