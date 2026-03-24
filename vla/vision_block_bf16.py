@@ -36,7 +36,7 @@ R = Layout.Replicate
 # Model Configuration
 # ===============================================================================
 USE_ALL_NPU_KERNELS = True
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/float/"
 KERNEL_BF16_PATH = "../cc/bf16_old/"
 BATCH = 1
 SEQ = 1024

@@ -14,7 +14,7 @@ np.random.seed(0)
 S = Layout.Shard
 R = Layout.Replicate
 
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/bf16_old/"
 INPUT_DIM = 256
 KERNEL_DIM = 16
 OUTPUT_DIM = 16

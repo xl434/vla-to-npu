@@ -13,7 +13,7 @@ from allo.memory import Layout
 from allo.backend.aie.external_kernel import ExternalModule
 import time
 
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/bf16_old/"
 
 S = Layout.Shard
 R = Layout.Replicate

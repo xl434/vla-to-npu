@@ -24,7 +24,7 @@ def test_mapping_softmax_4_1024():
     N = 1024
     P0_tile = 4 ## this match to the kernel row size 
 
-    KERNEL_LIB_PATH = "../cc/"
+    KERNEL_LIB_PATH = "../cc/bf16_old/"
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile  # 256
@@ -103,7 +103,7 @@ def test_mapping_softmax_8_512():
     N = 512
     P0_tile = 8
 
-    KERNEL_LIB_PATH = "../cc/"
+    KERNEL_LIB_PATH = "../cc/bf16_old/"
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile
@@ -182,7 +182,7 @@ def test_mapping_softmax_16_256():
     N = 256
     P0_tile = 16
 
-    KERNEL_LIB_PATH = "../cc/"
+    KERNEL_LIB_PATH = "../cc/bf16_old/"
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile
@@ -261,7 +261,7 @@ def test_mapping_softmax_32_128():
     N = 128
     P0_tile = 32
 
-    KERNEL_LIB_PATH = "../cc/"
+    KERNEL_LIB_PATH = "../cc/bf16_old/"
     Ty = bfloat16
 
     SOFTMAX_P0 = N // P0_tile
@@ -340,7 +340,7 @@ def test_mapping_softmax_64_64():
     N = 64
 
 
-    KERNEL_LIB_PATH = "../cc/"
+    KERNEL_LIB_PATH = "../cc/bf16_old/"
     Ty = bfloat16
 
     P0_tile = 64

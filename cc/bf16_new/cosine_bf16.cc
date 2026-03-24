@@ -284,7 +284,7 @@ void cos_kernel_32x64(bfloat16 input_x[32][64], bfloat16 output_x[32][64]) {
 
   const fvec_t cdiv3fac = aie::broadcast<float, vec_factor>(1.0f * div_fac(3));
   const fvec_t cdiv5fac = aie::broadcast<float, vec_factor>(1.0f * div_fac(5));
-  // const fvec_t cdiv7fac = aie::broadcast<float, vec_factor>(1.0f * div_fac(7));
+  const fvec_t cdiv7fac = aie::broadcast<float, vec_factor>(1.0f * div_fac(7));
 
   for (int s = 0; s < SEQ_TILE; ++s) {
     bfloat16 *__restrict input_ptr  = &input_x[s][0];
@@ -312,12 +312,12 @@ void cos_kernel_32x64(bfloat16 input_x[32][64], bfloat16 output_x[32][64]) {
       fvec_t x5        = aie::mul(x4, f);
       fvec_t x5div5fac = aie::mul(x5, cdiv5fac);
 
-      // fvec_t x6        = aie::mul(x5, f);
-      // fvec_t x7        = aie::mul(x6, f);
-      // fvec_t x7div7fac = aie::negmul(x7, cdiv7fac);
+      fvec_t x6        = aie::mul(x5, f);
+      fvec_t x7        = aie::mul(x6, f);
+      fvec_t x7div7fac = aie::negmul(x7, cdiv7fac);
 
       fvec_t outv = aie::add(f, aie::add(x3div3fac, x5div5fac));
-      // outv = aie::add(outv, x7div7fac);
+      outv = aie::add(outv, x7div7fac);
 
       outv = aie::select(outv, aie::neg(outv), neg_mask);
 

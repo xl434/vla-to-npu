@@ -1,0 +1,3 @@
+- fused rope kernel (current one uses several other kernels like sine, cosine, ...)
+- check bf16 masked softmax LUT overflow issue
+- check optimization opportunities in attention, mapping (like use all 4 by 4 tiles)

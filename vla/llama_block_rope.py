@@ -50,7 +50,7 @@ R = Layout.Replicate
 # Model Configuration
 # ===============================================================================
 USE_ALL_NPU_KERNELS = True  # if False, we will offload softmax and silu to cpu
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/float/"
 BATCH = 1  # fixme: don't care for now
 SEQ = 64
 EMBD = 768  # 64 * 12

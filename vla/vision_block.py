@@ -52,7 +52,7 @@ R = Layout.Replicate
 # Model Configuration
 # ===============================================================================
 USE_ALL_NPU_KERNELS = True  # if False, we will offload softmax and gelu to cpu
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/float/"
 BATCH = 1  # fixme: don't care for now
 SEQ = 64
 EMBD = 768  # 64 * 12
@@ -209,7 +209,7 @@ def attn_score_kernel(A: Ty[ATTN_SCORE_M_TILE, HEAD_DIM], B: Ty[ATTN_SCORE_N_TIL
 # Masked Softmax
 # ----------------------------------------------------------------
 softmax = ExternalModule(
-    top="softmax_float32",
+    top="softmax_float32_seq1024",
     impl_path=KERNEL_LIB_PATH + "v1_softmax_float.cc",
     input_idx=[0],
     output_idx=[1],

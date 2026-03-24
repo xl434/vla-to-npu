@@ -12,7 +12,7 @@ np.random.seed(0)
 S = Layout.Shard
 R = Layout.Replicate
 
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/float/"
 
 Ty = float32
 

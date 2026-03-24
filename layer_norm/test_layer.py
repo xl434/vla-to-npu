@@ -19,7 +19,7 @@ EMBD = 768
 # KERNEL_LIB_PATH = os.path.join(
 #     os.path.dirname(__file__), "../../allo2/allo/library/aie/kernels/"
 # )
-KERNEL_LIB_PATH="../../allo2/allo/allo/library/aie/"
+KERNEL_LIB_PATH="../cc/float/"
 # External module: layer norm (no bias inside kernel; bias added separately)
 norm = ExternalModule(
     top="layer_norm",
