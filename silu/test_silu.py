@@ -90,5 +90,5 @@ def _test_silu_tiling():
 
 
 if __name__ == "__main__":
-    _test_silu_single_tile()
-    # _test_silu_tiling()
+    # _test_silu_single_tile()
+    _test_silu_tiling()
