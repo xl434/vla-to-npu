@@ -58,7 +58,7 @@ def _test_softmax_bf16_1024_1024():
             softmax_kernel(local_Input, local_Output)
 
     # Build once
-    softmax_mod = df.build(top, target="aie")
+    softmax_mod = df.build(top, target="aie", profile = True)
 
     # Random input: logical [1024, 1024]
     torch.manual_seed(0)

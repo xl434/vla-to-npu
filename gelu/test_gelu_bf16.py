@@ -48,7 +48,7 @@ def _test_gelu_bf16_single_tile():
     input_torch = torch.from_numpy(input_np.astype(np.float32)).to(torch.bfloat16)
     ref_output = gelu_model(input_torch.float()).detach().to(torch.bfloat16).float().numpy()
 
-    mod = df.build(top, target="aie")
+    mod = df.build(top, target="aie", profile=True)
     output_allo = np.zeros((seq_tile, feature_tile), dtype=np_bfloat16)
     mod(input_np, output_allo)
     np.testing.assert_allclose(
@@ -88,7 +88,7 @@ def _test_gelu_bf16_tiling():
     input_torch = torch.from_numpy(input_np.astype(np.float32)).to(torch.bfloat16)
     ref_output = gelu_model(input_torch.float()).detach().to(torch.bfloat16).float().numpy()
 
-    mod = df.build(top, target="aie")
+    mod = df.build(top, target="aie", profile=True)
     output_allo = np.zeros((seq, feature_dim), dtype=np_bfloat16)
     mod(input_np, output_allo)
     np.testing.assert_allclose(

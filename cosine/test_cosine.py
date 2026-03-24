@@ -49,7 +49,7 @@ def _test_cosine_single_tile():
     ref_out = torch.cos(input_tensor)
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        mod = df.build(top, target="aie")
+        mod = df.build(top, target="aie", profile = True,)
         output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
 
         # Run external kernel via Allo

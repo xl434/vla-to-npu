@@ -49,7 +49,7 @@ def rms_norm_kernel(
 
 
 def test_rms_norm_bf16():
-    rms_norm_mod = df.build(rms_norm_kernel, target="aie", project="rms_norm_bf16.prj")
+    rms_norm_mod = df.build(rms_norm_kernel, target="aie", project="rms_norm_bf16.prj", profile=True)
 
     # PyTorch reference
     rms = nn.RMSNorm(EMBD, elementwise_affine=True)

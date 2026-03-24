@@ -48,103 +48,43 @@ const float lut_data[] = {
     9.99189842e-01, 9.99239283e-01, 9.99285707e-01, 9.99329300e-01};
 
 float get_tanh(float x) {
-
-  if (x >= TANH_MAX_X)  return  1.0f;
-  if (x <= -TANH_MAX_X) return -1.0f;
-
+  if (x >= TANH_MAX_X) {
+    return 1.0f;
+  }
+  if (x <= -TANH_MAX_X) {
+    return -1.0f;
+  }
+  // Work in [0, MAX_X] via symmetry
   bool neg = x < 0.0f;
   float ax = neg ? -x : x;
 
-  // idx_f is guaranteed in [0, TANH_LUT_SIZE-1) if x is in range
+  // Compute floating index
   float idx_f = ax / TANH_STEP;
+  int i = static_cast<int>(idx_f);
+  float frac = idx_f - i;
 
-  int i = (int)idx_f;
-  if (i < 0) i = 0;
-  if (i > TANH_LUT_SIZE - 2) i = TANH_LUT_SIZE - 2;
-
-  float frac = idx_f - (float)i;
-  if (frac < 0.0f) frac = 0.0f;
-  if (frac > 1.0f) frac = 1.0f;
-
+  // Gather and linearly interpolate
   float y0 = lut_data[i];
   float y1 = lut_data[i + 1];
-  float y  = y0 + frac * (y1 - y0);
+  float y = y0 + frac * (y1 - y0);
 
   return neg ? -y : y;
 }
 
-
-// aie::vector ver. -----------------
-// vector version get_tanh
-template<int vec_factor>
-aie::vector<float, vec_factor> get_tanh_vec(const aie::vector<float, vec_factor>& x) {
-  aie::vector<float, vec_factor> y;
-  #pragma unroll
-  for (int lane = 0; lane < vec_factor; lane += 1){
-    y[lane] = get_tanh(x[lane]);
-  }
-  return y;
-}
-
 extern "C" {
 
-// // no vecterization
-// void gelu_float32_vec(float input_x[4][768], float output_x[4][768]) {
-//   constexpr int SEQ_TILE = 4;
-//   constexpr int FEATURE_DIM_TILE = 768;
-//   constexpr int vec_factor = 16;
-//   using vec_t = aie::vector<float, vec_factor>;
-//   for (int iter = 0; iter < SEQ_TILE; iter++) {
-//     float *__restrict input_ptr = &input_x[iter][0];
-//     float *__restrict output_ptr = &output_x[iter][0];
-//     for (int iter = 0; iter < FEATURE_DIM_TILE; iter++) {
-//       float value = input_ptr[iter];
-//       float inner = 0.797885f * value * (1 + 0.044715f * value * value);
-//       output_ptr[iter] = (get_tanh(inner) + 1.0f) * value * 0.5f;
-//     }
-//   }
-// }
-
-// vector version gelu
 void gelu_float32(float input_x[4][768], float output_x[4][768]) {
-// void gelu_float32_vec(float input_x[4][16], float output_x[4][16]) {
-  //constexpr int SEQ_TILE = 4;
   constexpr int SEQ_TILE = 4;
-  // constexpr int FEATURE_DIM_TILE = 768;
   constexpr int FEATURE_DIM_TILE = 768;
-    // constexpr int vec_factor = 16;
-  constexpr int vec_factor = 8;
+  constexpr int vec_factor = 16;
   using vec_t = aie::vector<float, vec_factor>;
-
-  // constants
-  const vec_t c1 = aie::broadcast<float, vec_factor>(0.797885f);
-  const vec_t one = aie::broadcast<float, vec_factor>(1.0f);
-  const vec_t c2 = aie::broadcast<float, vec_factor>(0.044715f);
-  const vec_t one_half = aie::broadcast<float, vec_factor>(0.5f);
-
-  for (int s = 0; s < SEQ_TILE; ++s) {
-    float *__restrict input_ptr = &input_x[s][0];
-    float *__restrict output_ptr = &output_x[s][0];
-
-    for (int inner_it = 0; inner_it < FEATURE_DIM_TILE; inner_it += vec_factor) {
-      // Load 16 floats
-      vec_t x = aie::load_v<vec_factor>(input_ptr + inner_it);
-
-      // inner = 0.797885 * x * (1 + 0.044715 * x * x)
-      vec_t x2       = aie::mul(x, x).template to_vector<float>();          // x*x
-      vec_t term     = aie::mul(c2, x2).template to_vector<float>();        // 0.044715*x^2
-      vec_t one_plus = aie::add(one, term);                                 // 1 + ...
-      vec_t prod     = aie::mul(x, one_plus).template to_vector<float>();   // x*(...)
-      vec_t inner    = aie::mul(c1, prod).template to_vector<float>();      // 0.797885*...
-
-      // out = (tanh(inner) + 1) * x * 0.5
-      vec_t t    = get_tanh_vec<vec_factor>(inner);     // ISSUE                     // vec_t -> vec_t
-      vec_t t1   = aie::add(t, one);
-      vec_t y    = aie::mul(t1, x).template to_vector<float>();
-      vec_t outv = aie::mul(y, one_half).template to_vector<float>();
-
-      // Store 16 floats
-      aie::store_v(output_ptr + inner_it, outv);
+  for (int iter = 0; iter < SEQ_TILE; iter++) {
+    float *__restrict input_ptr = &input_x[iter][0];
+    float *__restrict output_ptr = &output_x[iter][0];
+    for (int iter = 0; iter < FEATURE_DIM_TILE; iter++) {
+      float value = input_ptr[iter];
+      float inner = 0.797885f * value * (1 + 0.044715f * value * value);
+      output_ptr[iter] = (get_tanh(inner) + 1.0f) * value * 0.5f;
     }
   }
 }
