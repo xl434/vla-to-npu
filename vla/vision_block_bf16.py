@@ -205,7 +205,7 @@ def softmax_kernel(
 # ----------------------------------------------------------------
 gelu_ext = ExternalModule(
     top="gelu_bf16",
-    impl_path=KERNEL_BF16_PATH + "gelu_bf16.cc",
+    impl_path=KERNEL_LIB_PATH+ "gelu_bf16.cc",
     input_idx=[0],
     output_idx=[1],
 )

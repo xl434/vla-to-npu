@@ -10,11 +10,11 @@
 extern "C"
 {
     void add(
-        bfloat16 input_x[64][64],
-        bfloat16 input_y[64][64],
-        bfloat16 output[64][64])
+        bfloat16 input_x[32][32],
+        bfloat16 input_y[32][32],
+        bfloat16 output[32][32])
     {
-        constexpr int vec_factor = 64;
+        constexpr int vec_factor = 32;
         using vec_t = aie::vector<bfloat16, vec_factor>;
         using float_vec_t = aie::vector<float, vec_factor>;
 

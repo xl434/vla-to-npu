@@ -8,6 +8,7 @@ np.random.seed(0)
 
 SEQ = 64
 TEXT = 960
+# K = 2048
 K = 64
 
 def build_gemm():
@@ -40,16 +41,18 @@ def build_gemm():
     return mod
 
 if __name__ == "__main__":
-    factor = 192
+    # factor = 6
+    factor = 2
     g = build_gemm()
     x = np.random.randn(SEQ, K*factor).astype(ml_bfloat16)
     y = np.random.randn(K*factor, TEXT).astype(ml_bfloat16)
-    z = np.zeros((64, TEXT), dtype=ml_bfloat16)
+    z = np.zeros((64, TEXT), dtype=np.float32)
 
     exp = x @ y
     for i in range(factor):
         tmp = np.zeros((64, TEXT), dtype=ml_bfloat16)
-        g(x[:, i*K:(i+1)*K], y[i*K:(i+1)*K, :], tmp)
-        z += tmp
+        g(100 * x[:, i*K:(i+1)*K], 100 * y[i*K:(i+1)*K, :], tmp)
+        # tmp = x[:, i*K:(i+1)*K] @ y[i*K:(i+1)*K, :]
+        z += tmp.astype(np.float32) / 10000
     
-    np.testing.assert_allclose(z.astype(np.float32), exp.astype(np.float32), rtol=1)
+    np.testing.assert_allclose(z.astype(np.float32), exp.astype(np.float32), rtol=1e-1)

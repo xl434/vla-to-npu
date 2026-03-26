@@ -51,7 +51,7 @@ void layer_norm_bf16_impl(bfloat16 *input_tensor, bfloat16 *weight,
     // Compute 1/sqrt(var + eps) using float, then broadcast as bf16
     float inv_std_f = 1.0f / sqrtf(variance_sum / HIDDEN + EPS);
     bfloat16 inv_std = (bfloat16)inv_std_f;
-    bfloat16 mean_bf16 = (bfloat16)mean;
+    bfloat16 mean_bf16 = (bfloat16) mean;
 
     // Pass 3: normalize and apply weight
     input_ptr = input_tensor;
