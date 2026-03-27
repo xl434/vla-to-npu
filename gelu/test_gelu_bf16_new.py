@@ -12,7 +12,7 @@ import numpy as np
 from allo.memory import Layout
 from allo.backend.aie.external_kernel import ExternalModule
 
-KERNEL_LIB_PATH = "../cc/float/"
+KERNEL_LIB_PATH = "../cc/bf16_new/"
 
 S  = Layout.Shard
 R  = Layout.Replicate
@@ -63,7 +63,7 @@ def _print_mismatch_debug(output_allo: np.ndarray, ref_numpy: np.ndarray,
 def _test_gelu_single_tile():
     gelu = ExternalModule(
         top="gelu",
-        impl_path=KERNEL_LIB_PATH + "gelu.cc",
+        impl_path=KERNEL_LIB_PATH + "gelu_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
@@ -124,7 +124,7 @@ def _test_gelu_single_tile():
 def _test_gelu_tiling():
     gelu = ExternalModule(
         top="gelu",
-        impl_path=KERNEL_LIB_PATH + "gelu.cc",
+        impl_path=KERNEL_LIB_PATH + "gelu_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )

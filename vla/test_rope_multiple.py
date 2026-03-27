@@ -16,7 +16,7 @@ VecLy = [S(0)]
 MatLy = [S(1), S(0)]
 
 # External kernels (AIE)
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/float/"
 
 OPS_IMPL = KERNEL_LIB_PATH + "rope_vec_ops.cc"   # the C++ file above
 SIN_IMPL = KERNEL_LIB_PATH + "sine.cc"       # your LUT-based sin kernel

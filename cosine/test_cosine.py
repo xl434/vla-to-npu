@@ -23,7 +23,7 @@ feature_tile = 64    # cols
 RTOL = 1e-3
 ATOL = 1e-4
 
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/float/"
 def _test_cosine_single_tile():
     # External kernel wrapper
     cosine = ExternalModule(

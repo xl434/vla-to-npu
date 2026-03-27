@@ -4,28 +4,26 @@
 import os
 import time
 import torch
-import ml_dtypes
 import torch.nn as nn
 import numpy as np
 import allo.dataflow as df
 from allo.memory import Layout
-from allo.ir.types import bfloat16
+from allo.ir.types import float32
 from allo.backend.aie.external_kernel import ExternalModule
 
 S = Layout.Shard
 R = Layout.Replicate
 Ly = [S(0), S(1)]
-Ty = bfloat16
+Ty = float32
 
 feature_tile = 768
 seq_tile = 4
 
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/float/"
 
 def _test_silu_single_tile():
     silu = ExternalModule(
-        # top="silu_float32",
-        top="silu_bf16",
+        top="silu_float32",
         impl_path=KERNEL_LIB_PATH + "silu.cc",  # Make sure this path is correct
         input_idx=[0],
         output_idx=[1],
@@ -42,51 +40,21 @@ def _test_silu_single_tile():
 
     # Reference PyTorch SiLU
     silu_model = nn.SiLU().cpu()
-    # input_tensor = torch.randn(seq_tile, feature_tile, dtype=torch.bfloat16)
-    input_tensor = torch.tensor(
-        [[6.5] * feature_tile for _ in range(seq_tile)], # manually set input
-        dtype=torch.bfloat16
-    )
-    
-    ref_out = silu_model(input_tensor)
-    ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
-    
-    # CPU execution time
-    with torch.no_grad():
-        start = time.perf_counter()
-        end = time.perf_counter()
-    cpu_time_us = (end - start) * 1000000
-
+    input_tensor = torch.randn(seq_tile, feature_tile, dtype=torch.float32)
+    output = silu_model(input_tensor)
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        # mod = df.build(top, target="aie")
-        mod = df.build(
-            top,
-            target="aie",
-            profile=True, # this would launch the kernel for more times
-            trace=[
-                ("core", (0, 0)),
-            ],
-            trace_size=4096,
-        )
-        output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
-        input_numpy = input_tensor.cpu().view(torch.int16).numpy().view(ml_dtypes.bfloat16)
-        mod(input_numpy, output_allo)        
-        
-        diff = np.abs(output_allo - ref_numpy)
-        max_idx = np.unravel_index(np.argmax(diff), diff.shape)
-        r, c = max_idx
-        print(f"Input        = {input_tensor[r, c].item():.6f}")
-        print(f"CPU execution time: {cpu_time_us:.2f} us")
-        np.testing.assert_allclose(output_allo, ref_numpy, rtol=1e-2, atol=1e-3)
+        mod = df.build(top, target="aie")
+        output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
+        mod(input_tensor.cpu().numpy(), output_allo)
+        np.testing.assert_allclose(output_allo, output.numpy(), rtol=1e-2)
         print("PASSED SiLU!")
     else:
         print("MLIR_AIE_INSTALL_DIR unset. Skipping AIE backend test.")
 
 def _test_silu_tiling():
     silu = ExternalModule(
-        # top="silu_float32",
-        top="silu_bf16",
+        top="silu_float32",
         impl_path=KERNEL_LIB_PATH+"silu.cc",  # Make sure this path is correct
         input_idx=[0],
         output_idx=[1],
@@ -108,36 +76,15 @@ def _test_silu_tiling():
 
     # Reference PyTorch SiLU
     silu_model = nn.SiLU().cpu()
-    input_tensor = torch.randn(seq, feature_dim, dtype=torch.bfloat16)
-    
-    ref_out = silu_model(input_tensor)
-    ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
-    
-    # CPU execution time
-    with torch.no_grad():
-        start = time.perf_counter()
-        end = time.perf_counter()
-    cpu_time_us = (end - start) * 1000000
+    input_tensor = torch.randn(seq, feature_dim, dtype=torch.float32)
+    output = silu_model(input_tensor)
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        # mod = df.build(top, target="aie")
-        mod = df.build(
-            top,
-            target="aie",
-            profile=True, # this would launch the kernel for more times
-            trace=[
-                ("core", (0, 0)),
-            ],
-            trace_size=4096,
-        )
+        mod = df.build(top, target="aie")
         output_allo = np.zeros((seq, feature_dim), dtype=np.float32)
-        input_numpy = input_tensor.cpu().view(torch.int16).numpy().view(ml_dtypes.bfloat16)
-        mod(input_numpy, output_allo)
-
-        print(f"CPU execution time: {cpu_time_us:.2f} us")
-        np.testing.assert_allclose(output_allo, ref_numpy, rtol=1e-2, atol=1e-3)
+        mod(input_tensor.cpu().numpy(), output_allo)
+        np.testing.assert_allclose(output_allo, output.numpy(), rtol=1e-2)
         print("PASSED SiLU!")
-    
     else:
         print("MLIR_AIE_INSTALL_DIR unset. Skipping AIE backend test.")
 

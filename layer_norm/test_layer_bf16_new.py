@@ -16,29 +16,36 @@ from allo.backend.aie import is_available
 
 S = Layout.Shard
 R = Layout.Replicate
-Ty = float32
-SEQ = 64
-EMBD = 768
+Ly = [R]
+LyA = [S(0), R]
 
-# Use the SAME kernel path pattern as the GPT2 example
-# KERNEL_LIB_PATH = os.path.join(
-#     os.path.dirname(__file__), "../../allo2/allo/library/aie/kernels/"
-# )
-KERNEL_LIB_PATH="../cc/float/"
-# External module: layer norm (no bias inside kernel; bias added separately)
-norm = ExternalModule(
-    top="layer_norm",
-    impl_path=KERNEL_LIB_PATH + "layer_norm.cc",
-    input_idx=[0, 1],
-    output_idx=[2],
-)
+seq_len = 4
+hidden_size = 768
 
-NORM_P0 = 4
-NORM_SEQ_TILE = 16
-NORM_TILE = NORM_SEQ_TILE // NORM_P0
+def layernorm(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
+    """
+    x: shape [..., dim] - input tensor
+    weight: shape [dim] - scale parameter γ
+    eps: small constant for numerical stability
+    """
+    mean = x.mean(dim=-1, keepdim=True)
+    var = x.var(dim=-1, unbiased=False, keepdim=True)
+    normalized = (x - mean) / torch.sqrt(var + eps)
+    return normalized * weight
 
-norm_io_layout = [S(0), R]
-norm_arg_layout = [R]
+
+@pytest.mark.parametrize("enable_trace", [False, True])
+def test_layer_norm(enable_trace: bool):
+
+    norm = ExternalModule(
+        top="layer_norm",
+        impl_path=f"../cc/bf16_new/layer_norm_bf16.cc",
+        input_idx=[0, 1],
+        output_idx=[2],
+    )
+
+    Ty = bfloat16
+    M, N = seq_len, hidden_size
 
     @df.region()
     def top(A: Ty[M, N], B: Ty[N], C: Ty[M, N]):

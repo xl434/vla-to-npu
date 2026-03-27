@@ -12,7 +12,7 @@ np.random.seed(0)
 S = Layout.Shard
 R = Layout.Replicate
 
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/bf16_old/"
 
 SEQ = 1024
 EMBD = 768
@@ -72,7 +72,7 @@ def build_gemm():
 
 add = ExternalModule(
     top="add",
-    impl_path=KERNEL_LIB_PATH + "add_64_64.cc",
+    impl_path=KERNEL_LIB_PATH + "add_64_64_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )
