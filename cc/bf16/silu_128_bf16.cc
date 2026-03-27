@@ -58,7 +58,7 @@ void silu_bfloat16_128(bfloat16 input_x[4][256], bfloat16 output_x[4][256]) {
   const vec_t c16divfac = aie::broadcast<bfloat16, vec_factor>(1.0f * div_fac(16));
 
   const vec_t fzero = aie::broadcast<bfloat16, vec_factor>(0.0f);
-  const vec_t fpos4 = aie::broadcast<bfloat16, vec_factor>(4.0f);
+  const vec_t fpos4 = aie::broadcast<bfloat16, vec_factor>(2.5f);
   const vec_t fpos7 = aie::broadcast<bfloat16, vec_factor>(7.0f);
   const vec_t fneg7 = aie::broadcast<bfloat16, vec_factor>(-7.0f);
 
