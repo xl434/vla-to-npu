@@ -5,8 +5,7 @@ import os
 import time
 import torch
 import torch.nn as nn
-import ml_dtypes
-from allo.ir.types import bfloat16
+from allo.ir.types import float32
 import allo.dataflow as df
 import numpy as np
 from allo.memory import Layout
@@ -17,23 +16,13 @@ KERNEL_LIB_PATH = "../cc/float/"
 S  = Layout.Shard
 R  = Layout.Replicate
 Ly = [S(0), S(1)]
-Ty = bfloat16
+Ty = float32
 
 feature_tile = 768
 seq_tile     = 4
 
 RTOL = 1e-2
 ATOL = 1e-3
-
-def _to_bf16_numpy(t: torch.Tensor) -> np.ndarray:
-    """
-    Bit-identical conversion: bfloat16 torch tensor → ml_dtypes.bfloat16 numpy
-    array via int16 view.  Avoids the lossy float32 round-trip that
-    tensor.cpu().numpy() performs on bfloat16 tensors.
-    """
-    if t.dtype != torch.bfloat16:
-        t = t.to(torch.bfloat16)
-    return t.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16)
 
 def _mismatch_stats(actual: np.ndarray, expected: np.ndarray,
                     rtol: float, atol: float):
@@ -79,12 +68,12 @@ def _test_gelu_single_tile():
             gelu(local_input_x, local_output_x)
 
     torch.manual_seed(0)
-    input_tensor = torch.randn(seq_tile, feature_tile, dtype=torch.bfloat16)
+    input_tensor = torch.randn(seq_tile, feature_tile, dtype=torch.float32)
 
-    # Reference: run nn.GELU in bfloat16 to match kernel precision
+    # Reference: run nn.GELU in float32 to match kernel precision
     gelu_model = nn.GELU()
-    ref_out   = gelu_model(input_tensor)                     # stays bfloat16
-    ref_numpy = _to_bf16_numpy(ref_out).astype(np.float32)  # f32 for assert_allclose
+    ref_out   = gelu_model(input_tensor)
+    ref_numpy = ref_out.cpu().numpy()
 
     # CPU execution time
     with torch.no_grad():
@@ -104,21 +93,18 @@ def _test_gelu_single_tile():
         trace_size=65536,
     )
 
-    # Bit-identical bfloat16 input; output buffer in ml_dtypes.bfloat16
-    input_numpy = _to_bf16_numpy(input_tensor)
-    output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
+    input_numpy = input_tensor.cpu().numpy()
+    output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
 
     mod(input_numpy, output_allo)
-
-    output_allo_f32 = output_allo.astype(np.float32)
 
     print(f"CPU execution time: {cpu_time_us:.2f} us")
 
     try:
-        np.testing.assert_allclose(output_allo_f32, ref_numpy, rtol=RTOL, atol=ATOL)
+        np.testing.assert_allclose(output_allo, ref_numpy, rtol=RTOL, atol=ATOL)
         print(f"PASSED gelu single-tile!  (rtol={RTOL}, atol={ATOL})")
     except AssertionError:
-        _print_mismatch_debug(output_allo_f32, ref_numpy, input_tensor,
+        _print_mismatch_debug(output_allo, ref_numpy, input_tensor,
                               RTOL, ATOL, label="single_tile")
 
 def _test_gelu_tiling():
@@ -146,11 +132,11 @@ def _test_gelu_tiling():
             gelu(local_input_x, local_output_x)
 
     torch.manual_seed(1)
-    input_tensor = torch.randn(seq, feature_dim, dtype=torch.bfloat16)
+    input_tensor = torch.randn(seq, feature_dim, dtype=torch.float32)
 
     gelu_model = nn.GELU()
     ref_out   = gelu_model(input_tensor)
-    ref_numpy = _to_bf16_numpy(ref_out).astype(np.float32)
+    ref_numpy = ref_out.cpu().numpy()
 
     # CPU execution time
     with torch.no_grad():
@@ -170,20 +156,18 @@ def _test_gelu_tiling():
         trace_size=65536,
     )
 
-    input_numpy = _to_bf16_numpy(input_tensor)
-    output_allo = np.zeros((seq, feature_dim), dtype=ml_dtypes.bfloat16)
+    input_numpy = input_tensor.cpu().numpy()
+    output_allo = np.zeros((seq, feature_dim), dtype=np.float32)
 
     mod(input_numpy, output_allo)
-
-    output_allo_f32 = output_allo.astype(np.float32)
 
     print(f"CPU execution time: {cpu_time_us:.2f} us")
 
     try:
-        np.testing.assert_allclose(output_allo_f32, ref_numpy, rtol=RTOL, atol=ATOL)
+        np.testing.assert_allclose(output_allo, ref_numpy, rtol=RTOL, atol=ATOL)
         print(f"PASSED gelu tiling!  (rtol={RTOL}, atol={ATOL})")
     except AssertionError:
-        _print_mismatch_debug(output_allo_f32, ref_numpy, input_tensor,
+        _print_mismatch_debug(output_allo, ref_numpy, input_tensor,
                               RTOL, ATOL, label="tiling")
 
 

@@ -36,7 +36,7 @@ def conv_kernel(input: Ty[64, 64], kernel: Ty[16, 16], output: Ty[4, 4]):
     ):
         conv(local_input, local_kernel, local_output)
 
-conv_mod = df.build(conv_kernel, target="aie", project="conv.prj")
+conv_mod = df.build(conv_kernel, target="aie", project="conv.prj", profile=True)
 
 def conv2d(A, B, C):
     embd = np.zeros((4, 4, 1)).astype(np.float32)

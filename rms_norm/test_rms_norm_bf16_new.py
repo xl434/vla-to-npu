@@ -39,6 +39,7 @@ def test_rms_norm():
         impl_path="../cc/bf16_new/rms_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
+        profile = True,
     )
 
     Ty = bfloat16
@@ -66,7 +67,7 @@ def test_rms_norm():
     cpu_time_us = (end - start) * 1000000
 
     if is_available():
-        mod = df.build(top, target="aie")
+        mod = df.build(top, target="aie", profile=True)
         output_allo = np.zeros((M, N), dtype=ml_dtypes.bfloat16)
         mod(input_np, weight_np, output_allo)
         print(f"CPU execution time: {cpu_time_us:.2f} us")

@@ -80,7 +80,7 @@ def _test_silu_tiling():
     output = silu_model(input_tensor)
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        mod = df.build(top, target="aie")
+        mod = df.build(top, target="aie", profile=True)
         output_allo = np.zeros((seq, feature_dim), dtype=np.float32)
         mod(input_tensor.cpu().numpy(), output_allo)
         np.testing.assert_allclose(output_allo, output.numpy(), rtol=1e-2)

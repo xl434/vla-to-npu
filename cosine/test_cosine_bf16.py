@@ -6,16 +6,17 @@ import os
 import time
 import numpy as np
 import torch
+import ml_dtypes
 import allo.dataflow as df
 from allo.memory import Layout
-from allo.ir.types import float32
+from allo.ir.types import bfloat16
 from allo.backend.aie.external_kernel import ExternalModule
 
 # Matrix shape: rows=32, cols=64  (matches sin_float32 signature: [32][64])
 S = Layout.Shard
 R = Layout.Replicate
 Ly = [S(0), S(1)]
-Ty = float32
+Ty = bfloat16
 seq_tile = 32       # rows
 feature_tile = 64   # cols
 
@@ -36,11 +37,11 @@ def _mismatch_stats(actual: np.ndarray, expected: np.ndarray, rtol: float, atol:
     mismatch_pct = 100.0 * mismatches / total if total else 0.0
     return mismatch_pct, mismatches, total
 
-KERNEL_LIB_PATH = "../cc/float/"
+KERNEL_LIB_PATH = "../cc/bf16_new/"
 def _test_cosine_single_tile():
     cosine = ExternalModule(
-        top="cos_float32",
-        impl_path=KERNEL_LIB_PATH + "cosine.cc",
+        top="cos_bfloat16",
+        impl_path=KERNEL_LIB_PATH + "cosine_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
@@ -60,7 +61,7 @@ def _test_cosine_single_tile():
             cosine(local_input_x, local_output_x)
 
     torch.manual_seed(0)
-    input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.float32) * 40.0) - 20.0
+    input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.bfloat16) * 40.0) - 20.0
     ref_out = torch.cos(input_tensor)
     
     # CPU execution time
@@ -72,17 +73,18 @@ def _test_cosine_single_tile():
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         # mod = df.build(top, target="aie")
         mod = df.build(
-        top,
+            top,
             target="aie",
             profile=True,
             trace=[("core", (0, 0))],
             trace_size=65536,
         )
-        output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
-        input_numpy = input_tensor.cpu().numpy()
-        ref_numpy   = ref_out.cpu().numpy()
+        output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
+        input_numpy = input_tensor.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16)
+        ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
         mod(input_numpy, output_allo)
+        output_allo = output_allo.astype(np.float32)
         print(f"CPU execution time: {cpu_time_us:.2f} us")
         try:
             np.testing.assert_allclose(output_allo, ref_numpy, rtol=RTOL, atol=ATOL)

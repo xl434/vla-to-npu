@@ -67,7 +67,14 @@ def _test_sine_single_tile():
     cpu_time_us = (end - start) * 1000000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        mod = df.build(top, target="aie")
+        # mod = df.build(top, target="aie", profile=True)
+        mod = df.build(
+            top,
+            target="aie",
+            profile=True,
+            trace=[("core", (0, 0))],
+            trace_size=65536,
+        )
         output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
         input_numpy = input_tensor.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16)
         ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
