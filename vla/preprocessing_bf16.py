@@ -79,9 +79,9 @@ def add_kernel(x: Ty[M, N], y: Ty[M, N], out: Ty[M, N]):
     ):
         add(local_x, local_y, local_output)
 
-add_mod = df.build(add_kernel, target="aie", project="add.prj")
-conv_mod = df.build(conv_kernel, target="aie", project="conv.prj")
-copy_mod = df.build(copy, target="aie", project="copy.prj")
+add_mod = df.build(add_kernel, target="aie", project="preprocessing/add_32_32.prj")
+conv_mod = df.build(conv_kernel, target="aie", project="preprocessing/conv.prj")
+copy_mod = df.build(copy, target="aie", project="preprocessing/copy.prj")
 
 def conv2d(A, B, C):
     t0 = time.time()

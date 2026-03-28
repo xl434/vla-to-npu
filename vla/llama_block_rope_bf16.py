@@ -130,6 +130,54 @@ class AttentionExpertBlock(nn.Module):
         x = self.down_proj(act) + residual
         return x
 
+class CrossAttentionBlock(nn.Module):
+    """Expert block that cross-attends into external K, V."""
+    def __init__(self):
+        super().__init__()
+        self.ln_1      = nn.RMSNorm(EMBD, elementwise_affine=True)
+        self.q_proj    = nn.Linear(EMBD, Q_H * HEAD_DIM, bias=False)
+        self.k_proj    = nn.Linear(EMBD, KV_H * HEAD_DIM, bias=False)
+        self.v_proj    = nn.Linear(EMBD, KV_H * HEAD_DIM, bias=False)
+        self.o_proj    = nn.Linear(Q_H * HEAD_DIM, EMBD, bias=False)
+        self.gate_proj = nn.Linear(EMBD, EMBD * 4, bias=False)
+        self.up_proj   = nn.Linear(EMBD, EMBD * 4, bias=False)
+        self.down_proj = nn.Linear(EMBD * 4, EMBD, bias=False)
+        self.ln_2      = nn.RMSNorm(EMBD, elementwise_affine=True)
+        self.silu      = nn.SiLU()
+
+    def forward(self, x, context):
+        """x: expert input, context: VLM output used as K,V source."""
+        B, L, _  = x.shape
+        _, Lc, _ = context.shape
+        residual = x
+        x_norm   = self.ln_1(x)
+        ctx_norm = self.ln_1(context)  # same norm applied to context
+
+        q = self.q_proj(x_norm).view(B, L,  Q_H,  HEAD_DIM)
+        k = self.k_proj(ctx_norm).view(B, Lc, KV_H, HEAD_DIM)
+        v = self.v_proj(ctx_norm).view(B, Lc, KV_H, HEAD_DIM)
+
+        # expand KV heads to match Q heads
+        kv_map = torch.div(
+            torch.arange(Q_H, device=x.device) * KV_H, Q_H, rounding_mode='floor'
+        )
+        k = k.index_select(2, kv_map)  # (B, Lc, Q_H, HEAD_DIM)
+        v = v.index_select(2, kv_map)
+
+        q = q.transpose(1, 2).float()  # (B, Q_H, L,  HEAD_DIM)
+        k = k.transpose(1, 2).float()  # (B, Q_H, Lc, HEAD_DIM)
+        v = v.transpose(1, 2).float()
+
+        scores = torch.matmul(q, k.transpose(-2, -1)) / (HEAD_DIM ** 0.5)  # (B, Q_H, L, Lc)
+        attn   = torch.softmax(scores, dim=-1).to(torch.bfloat16)
+        ctx    = torch.matmul(attn.float(), v).to(torch.bfloat16)
+        ctx    = ctx.transpose(1, 2).contiguous().view(B, L, Q_H * HEAD_DIM)
+
+        x = self.o_proj(ctx) + residual
+        residual = x
+        x = self.ln_2(x)
+        x = self.down_proj(self.silu(self.gate_proj(x)) * self.up_proj(x)) + residual
+        return x
 
 # ===============================================================================
 # Allo BF16 Version

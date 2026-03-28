@@ -20,7 +20,7 @@ extern "C"
 
         event0();
         
-        for (int i=0; i<64; ++i) {
+        for (int i=0; i<32; ++i) {
             bfloat16 *__restrict x_ptr = &input_x[i][0];
             bfloat16 *__restrict y_ptr = &input_y[i][0];
             bfloat16 *__restrict out_ptr = &output[i][0];

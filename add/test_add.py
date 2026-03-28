@@ -5,10 +5,10 @@ import numpy as np
 from allo.memory import Layout
 from allo.backend.aie.external_kernel import ExternalModule
 
-KERNEL_LIB_PATH = "../cc/"
+KERNEL_LIB_PATH = "../cc/bf16_old/"
 add = ExternalModule(
     top="add",
-    impl_path=KERNEL_LIB_PATH + "add_32_32.cc",
+    impl_path=KERNEL_LIB_PATH + "add_32_32_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )

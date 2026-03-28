@@ -64,7 +64,7 @@ def build_gemm():
     mod = df.build(
         top,
         target="aie",
-        project="connector_gemm.prj",
+        project="connector/gemm.prj",
         mapping_primitives=mapping_primitives,
     )
 
@@ -91,8 +91,8 @@ def add_kernel(x: Ty[M, N], y: Ty[M, N], out: Ty[M, N]):
     ):
         add(local_x, local_y, local_output)
 
-add_mod = df.build(add_kernel, target="aie", project="add.prj")
-copy_mod = df.build(copy, target="aie", project="copy.prj")
+add_mod = df.build(add_kernel, target="aie", project="connector/add_64_64.prj")
+copy_mod = df.build(copy, target="aie", project="connector/copy.prj")
 
 def fused_op(A, B, C):
     t0 = time.time()
