@@ -36,8 +36,8 @@ R = Layout.Replicate
 # Model Configuration
 # ===============================================================================
 USE_ALL_NPU_KERNELS = True
-KERNEL_LIB_PATH = "../cc/bf16_new/"
-KERNEL_FT_LIB_PATH = "../cc/float/"
+KERNEL_LIB_PATH = "../cc/float/"
+KERNEL_BF16_PATH = "../cc/bf16_old/"
 BATCH = 1
 SEQ = 1024
 EMBD = 768
@@ -87,8 +87,8 @@ class MiniVit(nn.Module):
 # LayerNorm (bf16)
 # ----------------------------------------------------------------
 norm = ExternalModule(
-    top="layer_norm",
-    impl_path=KERNEL_LIB_PATH + "layer_norm_bf16.cc",
+    top="layer_norm_bf16",
+    impl_path=KERNEL_BF16_PATH + "layer_norm_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )
@@ -175,7 +175,7 @@ Ty_f32 = float32
 
 softmax_ext = ExternalModule(
     top="softmax_float32_seq1024",
-    impl_path=KERNEL_FT_LIB_PATH + "v1_softmax_float.cc",
+    impl_path=KERNEL_LIB_PATH + "v1_softmax_float.cc",
     input_idx=[0],
     output_idx=[1],
 )
@@ -204,8 +204,8 @@ def softmax_kernel(
 # GELU (bf16)
 # ----------------------------------------------------------------
 gelu_ext = ExternalModule(
-    top="gelu",
-    impl_path=KERNEL_LIB_PATH+ "gelu_bf16.cc",
+    top="gelu_bf16",
+    impl_path=KERNEL_BF16_PATH + "gelu_bf16.cc",
     input_idx=[0],
     output_idx=[1],
 )

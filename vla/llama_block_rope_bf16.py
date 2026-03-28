@@ -564,8 +564,101 @@ def llama_block_rope(x_np, params):
         x += partial
 
     residual += x
-    return residual
+    return residual, key, value
 
+def llama_block_rope_cross(key, value, x_np, params):
+    x = x_np.astype(NP_DTYPE)
+    residual = x.reshape(SEQ, EMBD)
+    x = np.empty((SEQ, EMBD), dtype=NP_DTYPE)
+    rmsnorm(residual, params["W_norm_1"], x)
+
+    # QKV projections
+    query = np.zeros((SEQ, Q_H * HEAD_DIM), dtype=NP_DTYPE)
+    gemm_q_mod(x, params["Wq"], query)
+
+    # RoPE (float32 internally, returns bf16)
+    query = rope_apply_packed(query, heads=Q_H, head_dim=HEAD_DIM)
+    key = rope_apply_packed(key, heads=KV_H, head_dim=HEAD_DIM)
+
+    # Attention score: (Q * scale) @ K^T per head
+    query_scaled = (query.astype(np.float32) * float(ATTN_SCALE)).astype(NP_DTYPE)
+    attention_score = np.empty((SEQ, Q_H, SEQ), dtype=NP_DTYPE)
+    for k in range(Q_H):
+        k_key_idx = int(k * KV_H // Q_H)
+        Q_head = np.ascontiguousarray(query_scaled[:, k * HEAD_DIM : (k + 1) * HEAD_DIM])
+        K_head_T = np.ascontiguousarray(key[:, k_key_idx * HEAD_DIM : (k_key_idx + 1) * HEAD_DIM].T)
+        score = np.zeros((SEQ, SEQ), dtype=NP_DTYPE)
+        gemm_attn_mod(Q_head, K_head_T, score)
+        attention_score[:, k, :] = score
+
+    # Masked softmax (float32)
+    if USE_ALL_NPU_KERNELS:
+        attn_score_f32 = attention_score.astype(np.float32)
+        attn_weight_f32 = np.zeros((SEQ, Q_H * SEQ), dtype=np.float32)
+        masked_softmax_fn(attn_score_f32, attn_weight_f32)
+        attn_weight = attn_weight_f32.astype(NP_DTYPE)
+    else:
+        mask = torch.triu(torch.ones(SEQ, SEQ), 1).bool()
+        mask = np.repeat(mask[:, np.newaxis, :], Q_H, axis=1)
+        attn_score_f32 = attention_score.astype(np.float32)
+        attn_score_f32[mask == 1] = -np.inf
+        attn_weight = F.softmax(torch.from_numpy(attn_score_f32), dim=-1).numpy().astype(NP_DTYPE)
+
+    # Attention value
+    attn_value = np.zeros((SEQ, Q_H * HEAD_DIM), dtype=NP_DTYPE)
+    for k in range(Q_H):
+        kv_idx = int(k * KV_H // Q_H)
+        head_weight = (
+            attn_weight[:, k * SEQ : (k + 1) * SEQ]
+            if USE_ALL_NPU_KERNELS
+            else attn_weight[:, k, :]
+        )
+        head_value = np.ascontiguousarray(value[:, kv_idx * HEAD_DIM : (kv_idx + 1) * HEAD_DIM])
+        head_out = np.zeros((SEQ, HEAD_DIM), dtype=NP_DTYPE)
+        gemm_attn_mod(head_weight, head_value, head_out)
+        attn_value[:, k * HEAD_DIM : (k + 1) * HEAD_DIM] = head_out
+
+    # Output projection
+    x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
+    gemm_out_mod(attn_value, params["Wo"], x)
+    residual += x
+
+    # RMSNorm 2
+    rmsnorm(residual, params["W_norm_2"], x)
+
+    # Gate projection + SiLU
+    gate_proj_x = np.zeros((SEQ, FFN_HID), dtype=NP_DTYPE)
+    gemm_ffn_up_mod(x, params["W_gate"], gate_proj_x)
+
+    # Up projection
+    up_proj_x = np.zeros((SEQ, FFN_HID), dtype=NP_DTYPE)
+    gemm_ffn_up_mod(x, params["W_up"], up_proj_x)
+
+    # SiLU(gate) * up
+    if USE_ALL_NPU_KERNELS:
+        activated_x = np.zeros((SEQ, FFN_HID), dtype=NP_DTYPE)
+        for i in range(SEQ // SILU_SEQ_TILE):
+            silu_mod(
+                gate_proj_x[i * SILU_SEQ_TILE : (i + 1) * SILU_SEQ_TILE, :],
+                activated_x[i * SILU_SEQ_TILE : (i + 1) * SILU_SEQ_TILE, :],
+            )
+        activated_x *= up_proj_x  # hadamard in numpy bf16
+    else:
+        gate_t = torch.from_numpy(gate_proj_x.astype(np.float32))
+        up_t = torch.from_numpy(up_proj_x.astype(np.float32))
+        activated_x = (nn.SiLU()(gate_t) * up_t).numpy().astype(NP_DTYPE)
+
+    # FFN down: chunk K=3072 as 4 x GEMM(64, 768, 768)
+    x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
+    for chunk in range(FFN_DOWN_K_CHUNKS):
+        chunk_A = np.ascontiguousarray(activated_x[:, chunk * EMBD : (chunk + 1) * EMBD])
+        chunk_B = np.ascontiguousarray(params["W_down"][chunk * EMBD : (chunk + 1) * EMBD, :])
+        partial = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
+        gemm_embd_mod(chunk_A, chunk_B, partial)
+        x += partial
+
+    residual += x
+    return residual
 
 if __name__ == "__main__":
     ref_model = AttentionExpertBlock().eval()

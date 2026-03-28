@@ -60,7 +60,7 @@ def copy(A: Ty[8, 32], C: Ty[1, 256]):
 
 add = ExternalModule(
     top="add",
-    impl_path=KERNEL_LIB_PATH + "add_32_32.cc",
+    impl_path=KERNEL_LIB_PATH + "add_32_32_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )
