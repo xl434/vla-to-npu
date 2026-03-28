@@ -96,7 +96,7 @@ def _test_sine_single_tile():
             print(f"Max abs diff = {diff[max_idx]:.6e} at index {max_idx}")
             r, c = max_idx
             print(f"Input        = {input_tensor[r, c].item():.6f}")
-            print(f"Allo output  = {output_allo[r, c]:.6f}")
+            print(f"Allo output  = {output_allo[r, c]}")
             print(f"Torch output = {ref_numpy[r, c]:.6f}")
     else:
         print("MLIR_AIE_INSTALL_DIR unset. Skipping AIE backend run. "
