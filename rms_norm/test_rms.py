@@ -6,8 +6,8 @@ import time
 import pytest
 import torch
 import torch.nn as nn
-from allo.ir.types import bfloat16
-import ml_dtypes
+from allo.ir.types import float32
+
 import allo.dataflow as df
 import numpy as np
 from allo.memory import Layout
@@ -36,12 +36,12 @@ class RMSNorm(nn.Module):
 def test_rms_norm():
     norm = ExternalModule(
         top="rms_norm",
-        impl_path="../cc/rms_norm.cc",
+        impl_path="../cc/float/rms_norm.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )
 
-    Ty = bfloat16
+    Ty = float32
     M, N = seq_len, hidden_size
 
     @df.region()
@@ -50,14 +50,14 @@ def test_rms_norm():
         def core(local_A: Ty[M, N] @ LyA, local_B: Ty[N] @ Ly, local_C: Ty[M, N] @ LyA):
             norm(local_A, local_B, local_C)
 
-    input_tensor = torch.randn(M, N, dtype=torch.bfloat16)
-    weight = torch.randn(N, dtype=torch.bfloat16)
+    input_tensor = torch.randn(M, N, dtype=torch.float32)
+    weight = torch.randn(N, dtype=torch.float32)
     rms_norm = RMSNorm()
     output = rms_norm(input_tensor, weight)
 
-    input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
-    weight_np = np.asarray(weight.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
-    output_allo = np.zeros((M, N), dtype=ml_dtypes.bfloat16)
+    input_np = input_tensor.cpu().numpy().astype(np.float32)
+    weight_np = weight.cpu().numpy().astype(np.float32)
+    output_allo = np.zeros((M, N), dtype=np.float32)
 
     # CPU execution time
     with torch.no_grad():
@@ -67,7 +67,7 @@ def test_rms_norm():
 
     if is_available():
         mod = df.build(top, target="aie", profile=True)
-        output_allo = np.zeros((M, N), dtype=ml_dtypes.bfloat16)
+        output_allo = np.zeros((M, N), dtype=np.float32)
         mod(input_np, weight_np, output_allo)
         print(f"CPU execution time: {cpu_time_us:.2f} us")
 

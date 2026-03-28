@@ -39,7 +39,6 @@ def test_rms_norm():
         impl_path="../cc/bf16_new/rms_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
-        profile = True,
     )
 
     Ty = bfloat16

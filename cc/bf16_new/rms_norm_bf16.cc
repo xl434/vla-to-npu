@@ -1,3 +1,4 @@
+
 /*
 * Copyright Allo authors. All Rights Reserved.
 * SPDX-License-Identifier: Apache-2.0
@@ -13,13 +14,11 @@
 
 #define EPS 1e-6f // epsilon
 
-
 template <const int SEQ_LEN, const int HIDDEN>
 void rms_norm_single_batch(bfloat16 *input_tensor, bfloat16 *weight,
                         bfloat16 *output_tensor) {
     constexpr int vec_factor = 32;
     using vec_t = aie::vector<bfloat16, vec_factor>;
-    using fvec_t = aie::vector<float, vec_factor>;
     
     event0();
     for (int iter = 0; iter < SEQ_LEN; iter++) {

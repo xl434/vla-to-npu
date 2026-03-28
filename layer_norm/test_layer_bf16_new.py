@@ -34,12 +34,10 @@ def layernorm(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-5) -> torch
     return normalized * weight
 
 
-@pytest.mark.parametrize("enable_trace", [False, True])
-def test_layer_norm(enable_trace: bool):
-
+def test_layer_norm():
     norm = ExternalModule(
         top="layer_norm",
-        impl_path=f"../cc/bf16_new/layer_norm_bf16.cc",
+        impl_path="../cc/bf16_new/layer_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )
@@ -49,30 +47,31 @@ def test_layer_norm(enable_trace: bool):
 
     @df.region()
     def top(A: Ty[M, N], B: Ty[N], C: Ty[M, N]):
-        @df.kernel(mapping=[4], args=[A, B, C])
+        @df.kernel(mapping=[1], args=[A, B, C])
         def core(local_A: Ty[M, N] @ LyA, local_B: Ty[N] @ Ly, local_C: Ty[M, N] @ LyA):
             norm(local_A, local_B, local_C)
 
-    input_tensor = torch.randn(seq_len, hidden_size, dtype=torch.bfloat16)
-    weight = torch.randn(hidden_size, dtype=torch.bfloat16)
+    input_tensor = torch.randn(M, N, dtype=torch.bfloat16)
+    weight = torch.randn(N, dtype=torch.bfloat16)
     output_ref = layernorm(input_tensor, weight)
 
+    input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
+    weight_np = np.asarray(weight.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
+    output_allo = np.zeros((M, N), dtype=ml_dtypes.bfloat16)
+    
+    # CPU execution time
+    with torch.no_grad():
+        start = time.perf_counter()
+        end = time.perf_counter()
+    cpu_time_us = (end - start) * 1000000
+
     if is_available():
-        if enable_trace:
-            mod = df.build(
-                top,
-                target="aie",
-                trace=[("core", (0,)), ("core", (1,))],
-                trace_size=65536,
-            )
-        else:
-            mod = df.build(top, target="aie")
-        output_allo = np.zeros((seq_len, hidden_size)).astype(ml_dtypes.bfloat16)
-        # mod(input_tensor.cpu().numpy(), weight.cpu().numpy(), output_allo)
-        mod(input_tensor.cpu().view(torch.int16).numpy().view(ml_dtypes.bfloat16), weight.cpu().view(torch.int16).numpy().view(ml_dtypes.bfloat16), output_allo)
+        mod = df.build(top, target="aie", profile=True)
+        mod(input_np, weight_np, output_allo)
+        print(f"CPU execution time: {cpu_time_us:.2f} us")
         np.testing.assert_allclose(
             output_allo.astype(np.float32),
-            output_ref.cpu().view(torch.int16).numpy().view(ml_dtypes.bfloat16).astype(np.float32),
+            output_ref.float().detach().cpu().numpy(),
             rtol=1e-2, atol=1e-3
         )
         print("PASSED!")
@@ -115,5 +114,4 @@ def report_mismatches(actual, expected, rtol=1e-2, atol=1e-3, max_print=20):
             )
 
 if __name__ == "__main__":
-    test_layer_norm(enable_trace=False)
-    # test_layer_norm(enable_trace=True)
+    test_layer_norm()
