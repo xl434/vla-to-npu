@@ -55,16 +55,17 @@ def _test_sine_single_tile():
             local_output_x: Ty[seq_tile, feature_tile] @ Ly,
         ):
             sine(local_input_x, local_output_x)
-
+    
     torch.manual_seed(0)
     input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.bfloat16) * 40.0) - 20.0
-    ref_out = torch.sin(input_tensor)
-    
+
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
+        ref_out = torch.sin(input_tensor)
         end = time.perf_counter()
-    cpu_time_us = (end - start) * 1000000
+
+    cpu_time_us = (end - start) * 1_000_000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         # mod = df.build(top, target="aie", profile=True)

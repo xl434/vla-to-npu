@@ -46,14 +46,14 @@ def _test_silu_bf16_new_single_tile():
         dtype=torch.bfloat16
     )
 
-    ref_out = silu_model(input_tensor)
-    ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
-
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
+        ref_out = silu_model(input_tensor)
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1000000
+    
+    ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         mod = df.build(
@@ -102,15 +102,17 @@ def _test_silu_bf16_new_tiling():
             silu(local_input_x, local_output_x)
 
     # Reference PyTorch SiLU
+
     silu_model = nn.SiLU().cpu()
     input_tensor = torch.randn(seq, feature_dim, dtype=torch.bfloat16)
-    output = silu_model(input_tensor)
 
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
+        output = silu_model(input_tensor)
         end = time.perf_counter()
-    cpu_time_us = (end - start) * 1000000
+
+    cpu_time_us = (end - start) * 1_000_000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         mod = df.build(

@@ -53,17 +53,18 @@ def test_layer_norm():
 
     input_tensor = torch.randn(M, N, dtype=torch.bfloat16)
     weight = torch.randn(N, dtype=torch.bfloat16)
-    output_ref = layernorm(input_tensor, weight)
+
+    # CPU execution time
+    with torch.no_grad():
+        start = time.perf_counter()
+        output_ref = layernorm(input_tensor, weight)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     weight_np = np.asarray(weight.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     output_allo = np.zeros((M, N), dtype=ml_dtypes.bfloat16)
-    
-    # CPU execution time
-    with torch.no_grad():
-        start = time.perf_counter()
-        end = time.perf_counter()
-    cpu_time_us = (end - start) * 1000000
 
     if is_available():
         mod = df.build(top, target="aie", profile=True)

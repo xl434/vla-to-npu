@@ -146,11 +146,9 @@ def _test_layer_norm():
     with torch.no_grad():
         layer_norm_fn.weight.copy_(weight_tensor)
         layer_norm_fn.bias.copy_(bias_tensor)
-
         start = time.perf_counter()
         ref_out = layer_norm_fn(input_tensor)
         end = time.perf_counter()
-
     cpu_time_us = (end - start) * 1_000_000
 
     input_numpy = input_tensor.cpu().numpy()

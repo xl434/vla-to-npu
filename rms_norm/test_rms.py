@@ -49,21 +49,23 @@ def test_rms_norm():
         @df.kernel(mapping=[1], args=[A, B, C])
         def core(local_A: Ty[M, N] @ LyA, local_B: Ty[N] @ Ly, local_C: Ty[M, N] @ LyA):
             norm(local_A, local_B, local_C)
+        
 
     input_tensor = torch.randn(M, N, dtype=torch.float32)
     weight = torch.randn(N, dtype=torch.float32)
     rms_norm = RMSNorm()
-    output = rms_norm(input_tensor, weight)
+
+    with torch.no_grad():
+        start = time.perf_counter()
+        output = rms_norm(input_tensor, weight)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
 
     input_np = input_tensor.cpu().numpy().astype(np.float32)
     weight_np = weight.cpu().numpy().astype(np.float32)
     output_allo = np.zeros((M, N), dtype=np.float32)
 
-    # CPU execution time
-    with torch.no_grad():
-        start = time.perf_counter()
-        end = time.perf_counter()
-    cpu_time_us = (end - start) * 1000000
 
     if is_available():
         mod = df.build(top, target="aie", profile=True)

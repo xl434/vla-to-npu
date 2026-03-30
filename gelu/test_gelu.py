@@ -71,13 +71,13 @@ def _test_gelu_single_tile():
     input_tensor = torch.randn(seq_tile, feature_tile, dtype=torch.float32)
 
     # Reference: run nn.GELU in float32 to match kernel precision
-    gelu_model = nn.GELU()
-    ref_out   = gelu_model(input_tensor)
-    ref_numpy = ref_out.cpu().numpy()
 
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
+        gelu_model = nn.GELU()
+        ref_out   = gelu_model(input_tensor)
+        ref_numpy = ref_out.cpu().numpy()
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1000000
 
@@ -133,16 +133,16 @@ def _test_gelu_tiling():
 
     torch.manual_seed(1)
     input_tensor = torch.randn(seq, feature_dim, dtype=torch.float32)
-
+    
     gelu_model = nn.GELU()
-    ref_out   = gelu_model(input_tensor)
-    ref_numpy = ref_out.cpu().numpy()
 
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
+        ref_out   = gelu_model(input_tensor)
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1000000
+    ref_numpy = ref_out.cpu().numpy()
 
     if "MLIR_AIE_INSTALL_DIR" not in os.environ:
         print("MLIR_AIE_INSTALL_DIR unset — skipping AIE run (tiling).")
