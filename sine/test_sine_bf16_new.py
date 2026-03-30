@@ -55,19 +55,27 @@ def _test_sine_single_tile():
             local_output_x: Ty[seq_tile, feature_tile] @ Ly,
         ):
             sine(local_input_x, local_output_x)
-
+    
     torch.manual_seed(0)
     input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.bfloat16) * 40.0) - 20.0
-    ref_out = torch.sin(input_tensor)
-    
+
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
+        ref_out = torch.sin(input_tensor)
         end = time.perf_counter()
-    cpu_time_us = (end - start) * 1000000
+
+    cpu_time_us = (end - start) * 1_000_000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        mod = df.build(top, target="aie", profile=True)
+        # mod = df.build(top, target="aie", profile=True)
+        mod = df.build(
+            top,
+            target="aie",
+            profile=True,
+            trace=[("core", (0, 0))],
+            trace_size=65536,
+        )
         output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
         input_numpy = input_tensor.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16)
         ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
@@ -89,7 +97,7 @@ def _test_sine_single_tile():
             print(f"Max abs diff = {diff[max_idx]:.6e} at index {max_idx}")
             r, c = max_idx
             print(f"Input        = {input_tensor[r, c].item():.6f}")
-            print(f"Allo output  = {output_allo[r, c]:.6f}")
+            print(f"Allo output  = {output_allo[r, c]}")
             print(f"Torch output = {ref_numpy[r, c]:.6f}")
     else:
         print("MLIR_AIE_INSTALL_DIR unset. Skipping AIE backend run. "

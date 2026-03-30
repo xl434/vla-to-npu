@@ -1,6 +1,6 @@
 import time
 from allo.ir.types import bfloat16
-from ml_dtypes import bfloat16 as ml_bfloat16
+from ml_dtypes import bfloat16 as np_bfloat16
 import allo.dataflow as df
 from allo.library.aie.modules.gemm import GEMM
 import numpy as np
@@ -64,7 +64,7 @@ def build_gemm():
     mod = df.build(
         top,
         target="aie",
-        project="connector_gemm.prj",
+        project="connector/gemm.prj",
         mapping_primitives=mapping_primitives,
     )
 
@@ -77,7 +77,7 @@ add = ExternalModule(
     output_idx=[2],
 )
 
-split = [R, R]
+linear = [R, R]
 
 M = 64
 N = 64
@@ -85,18 +85,18 @@ N = 64
 def add_kernel(x: Ty[M, N], y: Ty[M, N], out: Ty[M, N]):
     @df.kernel(mapping=[1, 1], args=[x, y, out])
     def core(
-        local_x: Ty[M, N] @ split,
-        local_y: Ty[M, N] @ split,
-        local_output: Ty[M, N] @ split,
+        local_x: Ty[M, N] @ linear,
+        local_y: Ty[M, N] @ linear,
+        local_output: Ty[M, N] @ linear,
     ):
         add(local_x, local_y, local_output)
 
-add_mod = df.build(add_kernel, target="aie", project="add.prj")
-copy_mod = df.build(copy, target="aie", project="copy.prj")
+add_mod = df.build(add_kernel, target="aie", project="connector/add_64_64.prj")
+copy_mod = df.build(copy, target="aie", project="connector/copy.prj")
 
 def fused_op(A, B, C):
     t0 = time.time()
-    A_ = np.zeros((NEW_SEQ, NEW_EMBD), dtype=ml_bfloat16)
+    A_ = np.zeros((NEW_SEQ, NEW_EMBD), dtype=np_bfloat16)
     for i in range(NEW_SEQ):
         offset = (i // 8) * 128 + (i % 8) * 4
         for j in range(4):
@@ -118,15 +118,14 @@ def fused_op(A, B, C):
         A_tile = A_[:, i:i+K]
         B_tile = B[i:i+K, :]
 
-        C_tmp = np.zeros_like(C)
+        C_tmp = np.zeros((NEW_SEQ, TEXT)).astype(np_bfloat16)
 
         gemm_mod(A_tile, B_tile, C_tmp)
 
-        C += C_tmp
-        """
         for j in range(0, TEXT, N):
             add_mod(C[:, j:j+N], C_tmp[:, j:j+N], C[:, j:j+N])
-            """
+
+
     t2 = time.time()
 
     print("pixel shuffle execution time: " + str(t1 - t0))
@@ -135,7 +134,7 @@ def fused_op(A, B, C):
 
 # Weight matrix is size [12288, 960]
 def connector_block(x: np.ndarray, params: dict):
-    out = np.zeros((NEW_SEQ, TEXT), dtype=ml_bfloat16)
+    out = np.zeros((NEW_SEQ, TEXT), dtype=np_bfloat16)
     fused_op(x, params["W"], out)
     return out
 
@@ -143,12 +142,12 @@ def connector_block(x: np.ndarray, params: dict):
 # TEST
 # ##############################################################
 if __name__ == "__main__":
-    x = np.random.randn(SEQ, EMBD).astype(ml_bfloat16)
-    w = np.random.randn(EMBD*(SCALE_FACTOR**2), TEXT).astype(ml_bfloat16)
+    x = np.random.randn(SEQ, EMBD).astype(np_bfloat16)
+    w = np.random.randn(EMBD*(SCALE_FACTOR**2), TEXT).astype(np_bfloat16)
     dict = {"W": w}
     out = connector_block(x, dict)
 
     # test python
     x = x.astype(np.float32).reshape(32, 32, 768).reshape(32, 8, 3072).transpose(1, 0, 2).reshape(8, 8, 12288).transpose(1, 0, 2).reshape(64, 12288)
     expected = x @ w.astype(np.float32)
-    np.testing.assert_allclose(out.astype(np.float32), expected.astype(np.float32), rtol=1)
+    np.testing.assert_allclose(out.astype(np.float32), expected.astype(np.float32), rtol=1e-1)

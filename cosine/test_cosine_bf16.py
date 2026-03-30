@@ -1,3 +1,4 @@
+
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,19 +9,17 @@ import torch
 import ml_dtypes
 import allo.dataflow as df
 from allo.memory import Layout
-from allo.ir.types import float32
+from allo.ir.types import bfloat16
 from allo.backend.aie.external_kernel import ExternalModule
 
 # Matrix shape: rows=32, cols=64  (matches sin_float32 signature: [32][64])
 S = Layout.Shard
 R = Layout.Replicate
 Ly = [S(0), S(1)]
-Ty = float32
+Ty = bfloat16
 seq_tile = 32       # rows
 feature_tile = 64   # cols
 
-# RTOL = 1e-3
-# ATOL = 1e-4
 RTOL = 1e-2
 ATOL = 1e-3
 
@@ -38,34 +37,38 @@ def _mismatch_stats(actual: np.ndarray, expected: np.ndarray, rtol: float, atol:
     mismatch_pct = 100.0 * mismatches / total if total else 0.0
     return mismatch_pct, mismatches, total
 
-KERNEL_LIB_PATH = "../cc/float/"
-def _test_sine_single_tile():
-    sine = ExternalModule(
-        top="sin_float32",
-        impl_path=KERNEL_LIB_PATH + "sine.cc",
+KERNEL_LIB_PATH = "../cc/bf16_new/"
+def _test_cosine_single_tile():
+    cosine = ExternalModule(
+        top="cos_bfloat16",
+        impl_path=KERNEL_LIB_PATH + "cosine_bf16.cc",
         input_idx=[0],
         output_idx=[1],
     )
+    P0 = 1
+    P1 = 1
+
+    feature_dim = P0 * feature_tile
+    seq = P1 * seq_tile
 
     @df.region()
-    def top(input_x: Ty[seq_tile, feature_tile], output_x: Ty[seq_tile, feature_tile]):
-        @df.kernel(mapping=[1, 1], args=[input_x, output_x])
+    def top(input_x: Ty[seq, feature_dim], output_x: Ty[seq, feature_dim]):
+        @df.kernel(mapping=[P1, P0], args=[input_x, output_x])
         def core(
             local_input_x: Ty[seq_tile, feature_tile] @ Ly,
             local_output_x: Ty[seq_tile, feature_tile] @ Ly,
         ):
-            sine(local_input_x, local_output_x)
-    
-    torch.manual_seed(0)
-    input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.float32) * 40.0) - 20.0
+            cosine(local_input_x, local_output_x)
 
+    torch.manual_seed(0)
+    input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.bfloat16) * 40.0) - 20.0
+    
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
-        ref_out = torch.sin(input_tensor)
+        ref_out = torch.cos(input_tensor)
         end = time.perf_counter()
-
-    cpu_time_us = (end - start) * 1_000_000
+    cpu_time_us = (end - start) * 1000000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         # mod = df.build(top, target="aie")
@@ -76,23 +79,22 @@ def _test_sine_single_tile():
             trace=[("core", (0, 0))],
             trace_size=65536,
         )
-        output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
-        input_numpy = input_tensor.cpu().numpy()
-        ref_numpy   = ref_out.cpu().numpy()
+        output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
+        input_numpy = input_tensor.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16)
+        ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
         mod(input_numpy, output_allo)
-
-        print(f"CPU execution time: {cpu_time_us:.2f} us")
         output_allo = output_allo.astype(np.float32)
+        print(f"CPU execution time: {cpu_time_us:.2f} us")
         try:
             np.testing.assert_allclose(output_allo, ref_numpy, rtol=RTOL, atol=ATOL)
-            print(f"PASSED sine! (rtol={RTOL}, atol={ATOL})")
+            print(f"PASSED cosine! (rtol={RTOL}, atol={ATOL})")
         except AssertionError as e:
             # Debug: print summary and a few worst mismatches
             pct, mism, total = _mismatch_stats(output_allo, ref_numpy, RTOL, ATOL)
             diff    = np.abs(output_allo - ref_numpy)
             max_idx = np.unravel_index(np.argmax(diff), diff.shape)
-            print("Sine mismatch detected.")
+            print("Cosine mismatch detected.")
             print(f"Mismatch rate: {pct:.4f}% ({mism}/{total})  (rtol={RTOL}, atol={ATOL})")
             print(f"Max abs diff = {diff[max_idx]:.6e} at index {max_idx}")
             r, c = max_idx
@@ -104,4 +106,4 @@ def _test_sine_single_tile():
               "Set it to execute the Allo kernel.")
 
 if __name__ == "__main__":
-    _test_sine_single_tile()
+    _test_cosine_single_tile()

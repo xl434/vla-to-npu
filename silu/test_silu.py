@@ -39,14 +39,30 @@ def _test_silu_single_tile():
             silu(local_input_x, local_output_x)
 
     # Reference PyTorch SiLU
+
     silu_model = nn.SiLU().cpu()
     input_tensor = torch.randn(seq_tile, feature_tile, dtype=torch.float32)
-    output = silu_model(input_tensor)
+
+    # CPU execution time
+    with torch.no_grad():
+        start = time.perf_counter()
+        output = silu_model(input_tensor)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        mod = df.build(top, target="aie")
+        # mod = df.build(top, target="aie")
+        mod = df.build(
+            top,
+            target="aie",
+            profile=True,
+            trace=[("core", (0, 0))],
+            trace_size=65536,
+        )
         output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
         mod(input_tensor.cpu().numpy(), output_allo)
+        print(f"CPU execution time: {cpu_time_us:.2f} us")
         np.testing.assert_allclose(output_allo, output.numpy(), rtol=1e-2)
         print("PASSED SiLU!")
     else:
@@ -75,14 +91,28 @@ def _test_silu_tiling():
             silu(local_input_x, local_output_x)
 
     # Reference PyTorch SiLU
-    silu_model = nn.SiLU().cpu()
-    input_tensor = torch.randn(seq, feature_dim, dtype=torch.float32)
-    output = silu_model(input_tensor)
+
+    # CPU execution time
+    with torch.no_grad():
+        start = time.perf_counter()
+        silu_model = nn.SiLU().cpu()
+        input_tensor = torch.randn(seq, feature_dim, dtype=torch.float32)
+        output = silu_model(input_tensor)
+        end = time.perf_counter()
+    cpu_time_us = (end - start) * 1000000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
-        mod = df.build(top, target="aie", profile=True)
+        # mod = df.build(top, target="aie", profile=True)
+        mod = df.build(
+            top,
+            target="aie",
+            profile=True,
+            trace=[("core", (0, 0))],
+            trace_size=65536,
+        )
         output_allo = np.zeros((seq, feature_dim), dtype=np.float32)
         mod(input_tensor.cpu().numpy(), output_allo)
+        print(f"CPU execution time: {cpu_time_us:.2f} us")
         np.testing.assert_allclose(output_allo, output.numpy(), rtol=1e-2)
         print("PASSED SiLU!")
     else:

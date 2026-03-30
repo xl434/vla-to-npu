@@ -156,7 +156,8 @@ def _test_softmax_float_1024_1024():
         output_phys[start:end] = batch_out
     t1 = time.perf_counter()
     npu_us = (t1 - t0) * 1e6
-    print(f"NPU softmax [1024x1024] total: {npu_us:.1f} µs ({NUM_BATCHES} batches)")
+    npu_avg_us = npu_us / NUM_BATCHES
+    print(f"NPU softmax avg per tile: {npu_avg_us:.1f} µs")
 
     # Compare against PyTorch reference
     ref = F.softmax(input_logical.float(), dim=-1)
@@ -175,9 +176,8 @@ def _test_softmax_float_1024_1024():
         for _ in range(iters):
             _ = F.softmax(input_logical.float(), dim=-1)
         t1 = time.perf_counter()
-    avg_us = (t1 - t0) / iters * 1e6
-    print(f"CPU softmax avg over {iters} iters (after {warmup} warmup): {avg_us:.1f} µs")
-    print("PASS! Softmax [1024x1024] matches PyTorch reference within tolerance.")
+    cpu_avg_us = (t1 - t0) / iters * 1e6
+    print(f"CPU softmax avg per tile: {cpu_avg_us:.1f} µs")
 
 
 if __name__ == "__main__":

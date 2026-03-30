@@ -46,15 +46,14 @@ def _test_silu_bf16_new_single_tile():
         dtype=torch.bfloat16
     )
 
-    ref_out = silu_model(input_tensor)
-    ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
-
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
-        output = silu_model(input_tensor)
+        ref_out = silu_model(input_tensor)
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1000000
+    
+    ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         mod = df.build(
@@ -103,9 +102,17 @@ def _test_silu_bf16_new_tiling():
             silu(local_input_x, local_output_x)
 
     # Reference PyTorch SiLU
+
     silu_model = nn.SiLU().cpu()
     input_tensor = torch.randn(seq, feature_dim, dtype=torch.bfloat16)
-    output = silu_model(input_tensor)
+
+    # CPU execution time
+    with torch.no_grad():
+        start = time.perf_counter()
+        output = silu_model(input_tensor)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         mod = df.build(
@@ -120,7 +127,7 @@ def _test_silu_bf16_new_tiling():
         output_allo = np.zeros((seq, feature_dim), dtype=ml_dtypes.bfloat16)
         input_numpy = input_tensor.cpu().view(torch.int16).numpy().view(ml_dtypes.bfloat16)
         mod(input_numpy, output_allo)
-
+        print(f"CPU execution time: {cpu_time_us:.2f} us")
         ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
         np.testing.assert_allclose(output_allo, ref_numpy, rtol=1e-2, atol=1e-3)
         print("PASSED SiLU bf16_new tiling!")
@@ -130,4 +137,4 @@ def _test_silu_bf16_new_tiling():
 
 if __name__ == "__main__":
     _test_silu_bf16_new_single_tile()
-    # _test_silu_bf16_new_tiling()
+    _test_silu_bf16_new_tiling()

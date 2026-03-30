@@ -2,7 +2,7 @@ import time
 import torch
 import torch.nn as nn
 from allo.ir.types import bfloat16
-from ml_dtypes import bfloat16 as ml_bfloat16
+from ml_dtypes import bfloat16 as np_bfloat16
 import allo.dataflow as df
 import numpy as np
 from allo.memory import Layout
@@ -58,22 +58,44 @@ def copy(A: Ty[8, 32], C: Ty[1, 256]):
     ):
         local_C[:,:] = local_A[:,:]
 
-conv_mod = df.build(conv_kernel, target="aie", project="conv.prj")
-copy_mod = df.build(copy, target="aie", project="copy.prj")
+add = ExternalModule(
+    top="add",
+    impl_path=KERNEL_LIB_PATH + "add_32_32_bf16.cc",
+    input_idx=[0, 1],
+    output_idx=[2],
+)
+
+linear = [R, R]
+
+M = 32
+N = 32
+@df.region()
+def add_kernel(x: Ty[M, N], y: Ty[M, N], out: Ty[M, N]):
+    @df.kernel(mapping=[1, 1], args=[x, y, out])
+    def core(
+        local_x: Ty[M, N] @ linear,
+        local_y: Ty[M, N] @ linear,
+        local_output: Ty[M, N] @ linear,
+    ):
+        add(local_x, local_y, local_output)
+
+add_mod = df.build(add_kernel, target="aie", project="preprocessing/add_32_32.prj")
+conv_mod = df.build(conv_kernel, target="aie", project="preprocessing/conv.prj")
+copy_mod = df.build(copy, target="aie", project="preprocessing/copy.prj")
 
 def conv2d(A, B, C):
     t0 = time.time()
-    embd = np.zeros((32, 32, EMBD_DIM)).astype(ml_bfloat16)
-    out = np.zeros((1, SEQ, EMBD_DIM)).astype(ml_bfloat16)
+    embd = np.zeros((32, 32, EMBD_DIM)).astype(np_bfloat16)
+    out = np.zeros((1, SEQ, EMBD_DIM)).astype(np_bfloat16)
     for i in range(EMBD_DIM):
         for j in range(CHANNELS):
-            tmp = np.zeros((32, 32)).astype(ml_bfloat16)
+            tmp = np.zeros((32, 32)).astype(np_bfloat16)
             for k in range(2):
                 for l in range(2):
                     A_tile = A[j, k*INPUT_DIM:(k+1)*INPUT_DIM, l*INPUT_DIM:(l+1)*INPUT_DIM]
                     B_tile = B[i, j, :, :]
                     conv_mod(A_tile, B_tile, tmp[k*OUTPUT_DIM:(k+1)*OUTPUT_DIM, l*OUTPUT_DIM:(l+1)*OUTPUT_DIM])
-            embd[:,:,i] += tmp
+            add_mod(embd[:,:,i], tmp, embd[:,:,i])
         for k in range(4):
             copy_mod(embd[k*8:(k+1)*8, :, i], out[:, k*256:(k+1)*256, i])
     C[:, :] = out[0]
@@ -81,8 +103,8 @@ def conv2d(A, B, C):
     print("execution time: " + str(t1 - t0))
     
 def preprocessing_block(x_fp32: np.ndarray, params: dict):
-    x = x_fp32.astype(ml_bfloat16)
-    out = np.zeros((SEQ, EMBD_DIM), dtype=ml_bfloat16)
+    x = x_fp32.astype(np_bfloat16)
+    out = np.zeros((SEQ, EMBD_DIM), dtype=np_bfloat16)
     conv2d(x, params["kernel"], out)
     return out
 
@@ -97,13 +119,13 @@ if __name__ == "__main__":
     NUM_PATCHES  = (IN_H // PATCH_SIZE) * (IN_W // PATCH_SIZE)  # 1024
 
     # Random input image [3, 512, 512]
-    input_np = np.random.rand(IN_CHANNELS, IN_H, IN_W).astype(ml_bfloat16)
+    input_np = np.random.rand(IN_CHANNELS, IN_H, IN_W).astype(np_bfloat16)
 
     # Random kernel [768, 3, 16, 16]
-    kernel_np = np.random.rand(EMBED_DIM, IN_CHANNELS, PATCH_SIZE, PATCH_SIZE).astype(ml_bfloat16)
+    kernel_np = np.random.rand(EMBED_DIM, IN_CHANNELS, PATCH_SIZE, PATCH_SIZE).astype(np_bfloat16)
 
     # Output buffer [1024, 768]
-    output_np = np.zeros((NUM_PATCHES, EMBED_DIM), dtype=ml_bfloat16)
+    output_np = np.zeros((NUM_PATCHES, EMBED_DIM), dtype=np_bfloat16)
 
     # Run AIE kernel
     conv2d(input_np, kernel_np, output_np)
