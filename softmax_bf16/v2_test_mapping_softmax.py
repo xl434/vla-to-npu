@@ -1,5 +1,6 @@
 import os
 import torch
+import time
 import torch.nn.functional as F
 import allo
 from allo.ir.types import bfloat16
@@ -14,7 +15,6 @@ os.environ["ENABLE_AGGRESSIVE_PORT_UTILIZATION_PATCH"] = "1"
 
 S = Layout.Shard
 R = Layout.Replicate
-
 
 # ===============================================================================
 # Model Configuration
@@ -84,10 +84,17 @@ def test_mapping_softmax_4_1024():
     # ---------------------------------------------------------
     # Torch reference
     # ---------------------------------------------------------
-    torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-    torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
-    torch_out_np = torch_out_fp32.cpu().numpy()
 
+    torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
+
+    with torch.no_grad():
+        start = time.perf_counter()
+        torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+    torch_out_np = torch_out_fp32.cpu().numpy()
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
 
     # ---------------------------------------------------------
     # Compare
@@ -164,9 +171,15 @@ def test_mapping_softmax_8_512():
     # Torch reference
     # ---------------------------------------------------------
     torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-    torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
-    torch_out_np = torch_out_fp32.cpu().numpy()
 
+    with torch.no_grad():
+        start = time.perf_counter()
+        torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+    torch_out_np = torch_out_fp32.cpu().numpy()
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
 
     # ---------------------------------------------------------
     # Compare
@@ -211,6 +224,7 @@ def test_mapping_softmax_16_256():
                 )
         return primitives
 
+
     @df.region()
     def softmax_kernel(input_x: Ty[N, N], output_x: Ty[N, N]):
         @df.kernel(mapping=[SOFTMAX_P0], args=[input_x, output_x])
@@ -243,9 +257,15 @@ def test_mapping_softmax_16_256():
     # Torch reference
     # ---------------------------------------------------------
     torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-    torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
-    torch_out_np = torch_out_fp32.cpu().numpy()
 
+    with torch.no_grad():
+        start = time.perf_counter()
+        torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+    torch_out_np = torch_out_fp32.cpu().numpy()
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
 
     # ---------------------------------------------------------
     # Compare
@@ -321,10 +341,17 @@ def test_mapping_softmax_32_128():
     # ---------------------------------------------------------
     # Torch reference
     # ---------------------------------------------------------
-    torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-    torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
-    torch_out_np = torch_out_fp32.cpu().numpy()
 
+    torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
+
+    with torch.no_grad():
+        start = time.perf_counter()
+        torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+    torch_out_np = torch_out_fp32.cpu().numpy()
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
 
     # ---------------------------------------------------------
     # Compare
@@ -401,10 +428,17 @@ def test_mapping_softmax_64_64():
     # ---------------------------------------------------------
     # Torch reference
     # ---------------------------------------------------------
-    torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-    torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
-    torch_out_np = torch_out_fp32.cpu().numpy()
 
+    torch_in = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
+
+    with torch.no_grad():
+        start = time.perf_counter()
+        torch_out_fp32 = F.softmax(torch_in.float(), dim=-1)
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+    torch_out_np = torch_out_fp32.cpu().numpy()
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
 
     # ---------------------------------------------------------
     # Compare
