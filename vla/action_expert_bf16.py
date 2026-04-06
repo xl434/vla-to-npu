@@ -600,15 +600,6 @@ def rope_apply_packed(packed_bf16, heads, head_dim=64, max_wavelength=10_000.0, 
     return out.astype(NP_DTYPE)
 
 
-def _check(name, arr):
-    a = arr.astype(np.float32) if arr.dtype != np.float32 else arr
-    nans = np.isnan(a).sum()
-    infs = np.isinf(a).sum()
-    if nans or infs:
-        print(f"  !! {name}: {nans} NaN, {infs} Inf, shape={arr.shape}")
-    else:
-        print(f"  OK {name}: max={np.abs(a).max():.4f}, shape={arr.shape}")
-
 
 def _silu_with_fallback(gate_proj_x):
     """SiLU with CPU fallback for values outside bf16-safe range."""
@@ -643,14 +634,10 @@ def _ffn_block(x_norm, params):
     up_proj_x = np.zeros((SEQ, FFN_HID), dtype=NP_DTYPE)
     gemm_ffn_up_mod(x_norm, params["W_gate"], gate_proj_x)
     gemm_ffn_up_mod(x_norm, params["W_up"], up_proj_x)
-    _check("gate_proj", gate_proj_x)
-    _check("up_proj", up_proj_x)
 
     # SiLU(gate) * up
     activated_x = _silu_with_fallback(gate_proj_x)
-    _check("silu_gate", activated_x)
     activated_x *= up_proj_x  # hadamard in numpy bf16
-    _check("activated", activated_x)
 
     # FFN down: chunk K=2048 as 8 x GEMM(32, 768, 256)
     x_out = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
@@ -665,7 +652,6 @@ def _ffn_block(x_norm, params):
         gemm_ffn_down_mod(chunk_A, chunk_B, partial)
         x_out += partial
 
-    _check("ffn_down", x_out)
     return x_out
 
 
@@ -687,7 +673,6 @@ def action_expert_self_forward(x_np, params):
     residual = x.reshape(SEQ, EMBD)
     x = np.empty((SEQ, EMBD), dtype=NP_DTYPE)
     rmsnorm(residual, params["W_norm_1"], x)
-    _check("rmsnorm1", x)
 
     # QKV projections
     query = np.zeros((SEQ, Q_H * HEAD_DIM), dtype=NP_DTYPE)
@@ -696,9 +681,6 @@ def action_expert_self_forward(x_np, params):
     gemm_q_mod(x, params["Wq"], query)
     gemm_kv_self_mod(x, params["Wk"], key)
     gemm_kv_self_mod(x, params["Wv"], value)
-    _check("query", query)
-    _check("key", key)
-    _check("value", value)
 
     # RoPE (float32 internally, returns bf16)
     query = rope_apply_packed(query, heads=Q_H, head_dim=HEAD_DIM)
@@ -719,7 +701,6 @@ def action_expert_self_forward(x_np, params):
         weight = masked_softmax_cpu(score)
         attn_weight[:, h * SEQ : (h + 1) * SEQ] = weight
 
-    _check("attn_weight", attn_weight)
 
     # Attention value: weights @ V per head → [32, 64]
     attn_value = np.zeros((SEQ, Q_H * HEAD_DIM), dtype=NP_DTYPE)
@@ -731,23 +712,18 @@ def action_expert_self_forward(x_np, params):
         gemm_attn_self_value_mod(head_weight, head_value, head_out)
         attn_value[:, h * HEAD_DIM : (h + 1) * HEAD_DIM] = head_out
 
-    _check("attn_value", attn_value)
 
     # Output projection + residual
     x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
     gemm_out_mod(attn_value, params["Wo"], x)
-    _check("out_proj", x)
     residual += x
-    _check("residual1", residual)
 
     # RMSNorm 2
     rmsnorm(residual, params["W_norm_2"], x)
-    _check("rmsnorm2", x)
 
     # FFN block
     x = _ffn_block(x, params)
     residual += x
-    _check("final", residual)
 
     return residual
 
@@ -771,20 +747,16 @@ def action_expert_cross_forward(x_np, text_k_np, text_v_np, params):
     residual = x.reshape(SEQ, EMBD)
     x_norm = np.empty((SEQ, EMBD), dtype=NP_DTYPE)
     rmsnorm(residual, params["W_norm_1"], x_norm)
-    _check("rmsnorm1", x_norm)
 
     # Q from action input
     query = np.zeros((SEQ, Q_H * HEAD_DIM), dtype=NP_DTYPE)
     gemm_q_mod(x_norm, params["Wq"], query)
-    _check("query", query)
 
     # K/V from text encoder through cross-attention projections (320→320)
     key   = np.zeros((TEXT_SEQ, KV_DIM), dtype=NP_DTYPE)
     value = np.zeros((TEXT_SEQ, KV_DIM), dtype=NP_DTYPE)
     gemm_kv_cross_mod(text_k, params["Wk_cross"], key)
     gemm_kv_cross_mod(text_v, params["Wv_cross"], value)
-    _check("cross_key", key)
-    _check("cross_value", value)
 
     # RoPE on Q only for cross-attention
     query = rope_apply_packed(query, heads=Q_H, head_dim=HEAD_DIM)
@@ -814,24 +786,19 @@ def action_expert_cross_forward(x_np, text_k_np, text_v_np, params):
         gemm_attn_cross_value_mod(weight, V_head, head_out)
         attn_value[:, h * HEAD_DIM : (h + 1) * HEAD_DIM] = head_out
 
-    _check("attn_value", attn_value)
 
     # Output projection + residual
     x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
     gemm_out_mod(attn_value, params["Wo"], x)
-    _check("out_proj", x)
     residual += x
-    _check("residual1", residual)
 
     # RMSNorm 2
     x_norm2 = np.empty((SEQ, EMBD), dtype=NP_DTYPE)
     rmsnorm(residual, params["W_norm_2"], x_norm2)
-    _check("rmsnorm2", x_norm2)
 
     # FFN block
     x = _ffn_block(x_norm2, params)
     residual += x
-    _check("final", residual)
 
     return residual
 

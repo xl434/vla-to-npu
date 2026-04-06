@@ -475,14 +475,6 @@ def rope_apply_packed(packed_bf16, heads, head_dim=64, max_wavelength=10_000.0, 
     return out.astype(NP_DTYPE)
 
 
-def _check(name, arr):
-    a = arr.astype(np.float32) if arr.dtype != np.float32 else arr
-    nans = np.isnan(a).sum()
-    infs = np.isinf(a).sum()
-    if nans or infs:
-        print(f"  !! {name}: {nans} NaN, {infs} Inf, shape={arr.shape}")
-    else:
-        print(f"  OK {name}: max={np.abs(a).max():.4f}, shape={arr.shape}")
 
 
 def text_encoder_forward(x_np, params):
@@ -494,7 +486,6 @@ def text_encoder_forward(x_np, params):
     residual = x.reshape(SEQ, EMBD)
     x = np.empty((SEQ, EMBD), dtype=NP_DTYPE)
     rmsnorm(residual, params["W_norm_1"], x)
-    _check("rmsnorm1", x)
 
     # QKV projections
     query = np.zeros((SEQ, Q_H * HEAD_DIM), dtype=NP_DTYPE)
@@ -503,9 +494,6 @@ def text_encoder_forward(x_np, params):
     gemm_q_mod(x, params["Wq"], query)
     gemm_kv_mod(x, params["Wk"], key)
     gemm_kv_mod(x, params["Wv"], value)
-    _check("query", query)
-    _check("key", key)
-    _check("value", value)
 
     # RoPE (float32 internally, returns bf16)
     query = rope_apply_packed(query, heads=Q_H, head_dim=HEAD_DIM)
@@ -522,12 +510,10 @@ def text_encoder_forward(x_np, params):
         gemm_attn_score_mod(Q_head, K_head_T, score)
         attention_score[:, k_idx, :] = score
 
-    _check("attn_score", attention_score)
 
     # Masked softmax (bf16 — no float32 conversion needed)
     attn_weight = np.zeros((SEQ, Q_H * SEQ), dtype=NP_DTYPE)
     masked_softmax_fn(attention_score, attn_weight)
-    _check("attn_weight", attn_weight)
 
     # Attention value: weights @ V per head
     attn_value = np.zeros((SEQ, Q_H * HEAD_DIM), dtype=NP_DTYPE)
@@ -539,18 +525,14 @@ def text_encoder_forward(x_np, params):
         gemm_attn_value_mod(head_weight, head_value, head_out)
         attn_value[:, k_idx * HEAD_DIM : (k_idx + 1) * HEAD_DIM] = head_out
 
-    _check("attn_value", attn_value)
 
     # Output projection + residual
     x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
     gemm_out_mod(attn_value, params["Wo"], x)
-    _check("out_proj", x)
     residual += x
-    _check("residual1", residual)
 
     # RMSNorm 2
     rmsnorm(residual, params["W_norm_2"], x)
-    _check("rmsnorm2", x)
 
     # Gate projection + SiLU
     gate_proj_x = np.zeros((SEQ, FFN_HID), dtype=NP_DTYPE)
@@ -560,8 +542,6 @@ def text_encoder_forward(x_np, params):
     up_proj_x = np.zeros((SEQ, FFN_HID), dtype=NP_DTYPE)
     gemm_ffn_up_mod(x, params["W_up"], up_proj_x)
 
-    _check("gate_proj", gate_proj_x)
-    _check("up_proj", up_proj_x)
 
     # SiLU(gate) * up
     # bf16 Taylor series overflows for |x| > ~2.5 (x^12 exceeds bf16 max).
@@ -598,9 +578,7 @@ def text_encoder_forward(x_np, params):
             print(f"  Bad input range: [{bad_inputs.min():.4f}, {bad_inputs.max():.4f}]")
             activated_x[npu_bad] = cpu_silu[npu_bad]
 
-    _check("silu_gate", activated_x)
     activated_x *= up_proj_x  # hadamard in numpy bf16
-    _check("activated", activated_x)
 
     # FFN down: chunk K=2560 as 8 x GEMM(128, 960, 320)
     x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
@@ -611,9 +589,7 @@ def text_encoder_forward(x_np, params):
         gemm_ffn_down_mod(chunk_A, chunk_B, partial)
         x += partial
 
-    _check("ffn_down", x)
     residual += x
-    _check("final", residual)
 
     # Return output + key/value for cross-attention
     return residual, key, value
