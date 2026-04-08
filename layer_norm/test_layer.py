@@ -115,10 +115,11 @@ def layernorm_full_seq(
         npu_tile_times_us.append(npu_tile_time_us)
 
         # CPU tile timing
-        tile_in_torch = torch.from_numpy(tile_in)
         with torch.no_grad():
             t2 = time.perf_counter()
-            _ = layer_norm_fn(tile_in_torch)
+            tile_in_numpy_cpu = tile_in.copy()                                      # input data prep
+            cpu_out = layer_norm_fn(torch.from_numpy(tile_in_numpy_cpu))            # compute
+            _ = cpu_out.cpu().numpy()                                               # output retrieval
             t3 = time.perf_counter()
         cpu_tile_time_us = (t3 - t2) * 1_000_000
         cpu_tile_times_us.append(cpu_tile_time_us)
@@ -147,14 +148,15 @@ def _test_layer_norm():
         layer_norm_fn.weight.copy_(weight_tensor)
         layer_norm_fn.bias.copy_(bias_tensor)
         start = time.perf_counter()
-        ref_out = layer_norm_fn(input_tensor)
+        input_numpy_cpu = input_tensor.cpu().numpy()                        # input data prep
+        ref_out = layer_norm_fn(torch.from_numpy(input_numpy_cpu))          # compute
+        ref_numpy = ref_out.cpu().numpy()                                   # output retrieval
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1_000_000
 
     input_numpy = input_tensor.cpu().numpy()
     weight_numpy = weight_tensor.cpu().numpy()
     bias_numpy = bias_tensor.cpu().numpy()
-    ref_numpy = ref_out.cpu().numpy()
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         output_allo, avg_npu_us, min_npu_us, avg_cpu_tile_us, min_cpu_tile_us = layernorm_full_seq(

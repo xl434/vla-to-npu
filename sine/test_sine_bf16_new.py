@@ -62,7 +62,9 @@ def _test_sine_single_tile():
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
-        ref_out = torch.sin(input_tensor)
+        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+        ref_out = torch.sin(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
+        ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
         end = time.perf_counter()
 
     cpu_time_us = (end - start) * 1_000_000
@@ -78,7 +80,6 @@ def _test_sine_single_tile():
         )
         output_allo = np.zeros((seq_tile, feature_tile), dtype=ml_dtypes.bfloat16)
         input_numpy = input_tensor.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16)
-        ref_numpy   = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
         mod(input_numpy, output_allo)
 

@@ -87,11 +87,11 @@ def _test_gelu_single_tile():
     # CPU execution time
     with torch.no_grad():
         start = time.perf_counter()
-        ref_out   = gelu_model(input_tensor)                     # stays bfloat16
+        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+        ref_out = gelu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
+        ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1000000
-
-    ref_numpy = _to_bf16_numpy(ref_out).astype(np.float32)  # f32 for assert_allclose
 
     if "MLIR_AIE_INSTALL_DIR" not in os.environ:
         print("MLIR_AIE_INSTALL_DIR unset — skipping AIE run (single_tile).")
@@ -130,19 +130,19 @@ def _test_gelu_tiling():
         output_idx=[1],
     )
 
-    P0 = 1
-    P1 = 1
+    P0 = 4
+    P1 = 4
 
     feature_dim = P0 * feature_tile
     seq         = P1 * seq_tile
 
     @df.region()
-    def top(input_x:  Ty[seq, feature_dim],
+    def top(input_x: Ty[seq, feature_dim],
             output_x: Ty[seq, feature_dim]):
         @df.kernel(mapping=[P1, P0], args=[input_x, output_x])
         def core(
-            local_input_x:  Ty[seq_tile, feature_tile] @ Ly,
-            local_output_x: Ty[seq_tile, feature_tile] @ Ly,
+            local_input_x: Ty[seq, feature_dim] @ Ly,
+            local_output_x: Ty[seq, feature_dim] @ Ly,
         ):
             gelu(local_input_x, local_output_x)
 
@@ -150,11 +150,12 @@ def _test_gelu_tiling():
     input_tensor = torch.randn(seq, feature_dim, dtype=torch.bfloat16)
 
     # CPU execution time
+    gelu_model = nn.GELU()
     with torch.no_grad():
         start = time.perf_counter()
-        gelu_model = nn.GELU()
-        ref_out   = gelu_model(input_tensor)
-        ref_numpy = _to_bf16_numpy(ref_out).astype(np.float32)
+        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+        ref_out = gelu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
+        ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1000000
 
