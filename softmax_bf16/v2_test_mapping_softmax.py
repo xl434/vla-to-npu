@@ -74,16 +74,29 @@ def test_mapping_softmax_4_768():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        output_ref = F.softmax(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
-            dim=-1,
-        )  # compute
-        ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )  # compute
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     allo_out = np.zeros((N, N), dtype=np_bfloat16)
@@ -154,16 +167,29 @@ def test_mapping_softmax_4_1024():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        output_ref = F.softmax(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
-            dim=-1,
-        )  # compute
-        ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )  # compute
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     allo_out = np.zeros((N, N), dtype=np_bfloat16)
@@ -235,16 +261,29 @@ def test_mapping_softmax_8_512():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        output_ref = F.softmax(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
-            dim=-1,
-        )  # compute
-        ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )  # compute
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     allo_out = np.zeros((N, N), dtype=np_bfloat16)
@@ -316,16 +355,29 @@ def test_mapping_softmax_16_256():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        output_ref = F.softmax(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
-            dim=-1,
-        )  # compute
-        ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )  # compute
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     allo_out = np.zeros((N, N), dtype=np_bfloat16)
@@ -397,16 +449,29 @@ def test_mapping_softmax_32_128():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        output_ref = F.softmax(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
-            dim=-1,
-        )  # compute
-        ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )  # compute
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     allo_out = np.zeros((N, N), dtype=np_bfloat16)
@@ -477,16 +542,29 @@ def test_mapping_softmax_64_64():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        output_ref = F.softmax(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
-            dim=-1,
-        )  # compute
-        ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output_ref = F.softmax(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16).float(),
+                dim=-1,
+            )  # compute
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     allo_out = np.zeros((N, N), dtype=np_bfloat16)
@@ -503,8 +581,8 @@ def test_mapping_softmax_64_64():
 
 
 if __name__ == "__main__":
-    # test_mapping_softmax_4_768()
-    test_mapping_softmax_4_1024()
+    test_mapping_softmax_4_768()
+    # test_mapping_softmax_4_1024()
     # test_mapping_softmax_8_512()
     # test_mapping_softmax_16_256()
     # test_mapping_softmax_32_128()

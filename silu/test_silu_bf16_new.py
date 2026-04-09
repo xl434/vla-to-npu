@@ -48,13 +48,23 @@ def _test_silu_bf16_new_single_tile():
     
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        ref_out = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
-        ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            ref_out = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))
+            ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1000000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            ref_out = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
+            ref_numpy = ref_out.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1000000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         mod = df.build(
@@ -108,13 +118,23 @@ def _test_silu_bf16_new_tiling():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        output = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
-        ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))
+            ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
+            ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     if "MLIR_AIE_INSTALL_DIR" in os.environ:
         mod = df.build(

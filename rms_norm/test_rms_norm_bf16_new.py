@@ -56,17 +56,31 @@ def test_rms_norm():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        weight_numpy_cpu = weight.view(torch.int16).numpy().view(ml_dtypes.bfloat16)         # input data prep
-        output = rms_norm(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16),
-            torch.from_numpy(weight_numpy_cpu.view(np.int16)).view(torch.bfloat16),
-        )  # compute
-        ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            weight_numpy_cpu = weight.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output = rms_norm(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+                torch.from_numpy(weight_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+            )
+            ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            weight_numpy_cpu = weight.view(torch.int16).numpy().view(ml_dtypes.bfloat16)         # input data prep
+            output = rms_norm(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+                torch.from_numpy(weight_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+            )  # compute
+            ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     weight_np = np.asarray(weight.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
@@ -166,17 +180,31 @@ def test_rms_norm_tiling():
 
     # CPU Execution Time
     with torch.no_grad():
-        start = time.perf_counter()
-        input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
-        weight_numpy_cpu = weight.view(torch.int16).numpy().view(ml_dtypes.bfloat16)         # input data prep
-        output_ref = rms_norm(
-            torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16),
-            torch.from_numpy(weight_numpy_cpu.view(np.int16)).view(torch.bfloat16),
-        )  # compute
-        ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
-        end = time.perf_counter()
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            weight_numpy_cpu = weight.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output_ref = rms_norm(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+                torch.from_numpy(weight_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+            )
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
 
-    cpu_time_us = (end - start) * 1_000_000
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            weight_numpy_cpu = weight.view(torch.int16).numpy().view(ml_dtypes.bfloat16)         # input data prep
+            output_ref = rms_norm(
+                torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+                torch.from_numpy(weight_numpy_cpu.view(np.int16)).view(torch.bfloat16),
+            )  # compute
+            ref_numpy = output_ref.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
 
     input_np = np.asarray(input_tensor.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
     weight_np = np.asarray(weight.float().cpu().numpy(), dtype=ml_dtypes.bfloat16)
