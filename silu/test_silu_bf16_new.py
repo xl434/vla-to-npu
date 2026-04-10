@@ -156,6 +156,79 @@ def _test_silu_bf16_new_tiling():
         print("MLIR_AIE_INSTALL_DIR unset. Skipping AIE backend test.")
 
 
+def _test_silu_bf16_new_tiling_small():
+    silu = ExternalModule(
+        top="silu_bf16_small",
+        impl_path=KERNEL_LIB_PATH + "silu_bf16.cc",
+        input_idx=[0],
+        output_idx=[1],
+    )
+
+    P0 = 4
+    P1 = 4
+
+    feature_tile = 192
+    seq_tile     = 1
+
+    feature_dim = P0 * feature_tile
+    seq         = P1 * seq_tile
+
+    @df.region()
+    def top(input_x: Ty[seq, feature_dim], output_x: Ty[seq, feature_dim]):
+        @df.kernel(mapping=[P1, P0], args=[input_x, output_x])
+        def core(
+            local_input_x: Ty[seq, feature_dim] @ Ly,
+            local_output_x: Ty[seq, feature_dim] @ Ly,
+        ):
+            silu(local_input_x, local_output_x)
+
+    torch.manual_seed(1)
+    input_tensor = torch.randn(seq, feature_dim, dtype=torch.bfloat16)
+
+    # Reference PyTorch SiLU
+    silu_model = nn.SiLU().cpu()
+
+    # CPU Execution Time
+    with torch.no_grad():
+        # Warmup
+        for _ in range(20):
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+            output = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))
+            ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)
+
+        # Timed runs
+        total_time = 0.0
+        for _ in range(1000):
+            start = time.perf_counter()
+            input_numpy_cpu = input_tensor.view(torch.int16).numpy().view(ml_dtypes.bfloat16)   # input data prep
+            output = silu_model(torch.from_numpy(input_numpy_cpu.view(np.int16)).view(torch.bfloat16))  # compute
+            ref_numpy = output.view(torch.int16).cpu().numpy().view(ml_dtypes.bfloat16).astype(np.float32)  # output retrieval
+            end = time.perf_counter()
+            total_time += end - start
+
+    cpu_time_us = (total_time / 1000) * 1_000_000
+
+    if "MLIR_AIE_INSTALL_DIR" in os.environ:
+        mod = df.build(
+            top,
+            target="aie",
+            profile=True,
+            trace=[
+                ("core", (0, 0)),
+            ],
+            trace_size=4096,
+        )
+        output_allo = np.zeros((seq, feature_dim), dtype=ml_dtypes.bfloat16)
+        input_numpy = input_tensor.cpu().view(torch.int16).numpy().view(ml_dtypes.bfloat16)
+        mod(input_numpy, output_allo)
+        print(f"CPU execution time: {cpu_time_us:.2f} us")
+        np.testing.assert_allclose(output_allo, ref_numpy, rtol=1e-2, atol=1e-3)
+        print("PASSED SiLU bf16_new tiling small!")
+    else:
+        print("MLIR_AIE_INSTALL_DIR unset. Skipping AIE backend test.")
+
+
 if __name__ == "__main__":
-    _test_silu_bf16_new_single_tile()
-    _test_silu_bf16_new_tiling()
+    # _test_silu_bf16_new_single_tile()
+    # _test_silu_bf16_new_tiling()
+    _test_silu_bf16_new_tiling_small()

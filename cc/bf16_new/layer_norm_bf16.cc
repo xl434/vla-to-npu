@@ -101,4 +101,8 @@ void layer_norm(bfloat16 A_in[4][768], bfloat16 B_in[768], bfloat16 C_out[4][768
   layer_norm_single_batch_no_bias<4, 768>(&A_in[0][0], B_in, &C_out[0][0]);
 }
 
+void layer_norm_small(bfloat16 A_in[4][192], bfloat16 B_in[192], bfloat16 C_out[4][192]) {
+  layer_norm_single_batch_no_bias<4, 192>(&A_in[0][0], B_in, &C_out[0][0]);
+}
+
 } // extern "C"
