@@ -62,10 +62,12 @@ def _test_cosine_single_tile():
     torch.manual_seed(0)
     input_tensor = (torch.rand(seq_tile, feature_tile, dtype=torch.float32) * 40.0) - 20.0
     
-    # CPU execution time
+    # CPU Execution Time
     with torch.no_grad():
         start = time.perf_counter()
-        ref_out = torch.cos(input_tensor)
+        input_numpy_cpu = input_tensor.cpu().numpy()                        # input data prep
+        ref_out = torch.cos(torch.from_numpy(input_numpy_cpu))             # compute
+        ref_numpy = ref_out.cpu().numpy()                                  # output retrieval
         end = time.perf_counter()
     cpu_time_us = (end - start) * 1000000
 
@@ -80,7 +82,6 @@ def _test_cosine_single_tile():
         )
         output_allo = np.zeros((seq_tile, feature_tile), dtype=np.float32)
         input_numpy = input_tensor.cpu().numpy()
-        ref_numpy   = ref_out.cpu().numpy()
 
         mod(input_numpy, output_allo)
         print(f"CPU execution time: {cpu_time_us:.2f} us")

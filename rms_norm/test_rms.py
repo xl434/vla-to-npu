@@ -55,9 +55,16 @@ def test_rms_norm():
     weight = torch.randn(N, dtype=torch.float32)
     rms_norm = RMSNorm()
 
+    # CPU Execution Time
     with torch.no_grad():
         start = time.perf_counter()
-        output = rms_norm(input_tensor, weight)
+        input_numpy_cpu = input_tensor.cpu().numpy()                        # input data prep
+        weight_numpy_cpu = weight.cpu().numpy()                             # input data prep
+        output = rms_norm(
+            torch.from_numpy(input_numpy_cpu),
+            torch.from_numpy(weight_numpy_cpu),
+        )                                                                   # compute
+        ref_numpy = output.cpu().numpy().astype(np.float32)                 # output retrieval
         end = time.perf_counter()
 
     cpu_time_us = (end - start) * 1_000_000
@@ -75,7 +82,7 @@ def test_rms_norm():
 
         np.testing.assert_allclose(
             output_allo.astype(np.float32),
-            output.float().detach().cpu().numpy(),
+            ref_numpy,
             rtol=1e-2,
             atol=1e-3,
         )

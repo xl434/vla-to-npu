@@ -549,7 +549,26 @@ void init_softmax(bfloat16 *__restrict max_logit,
 
 extern "C" {
 
-void softmax_bf16(const bfloat16 in[4][1024], bfloat16 out[4][1024]) {
+void softmax_bf16_4_768(const bfloat16 in[4][768], bfloat16 out[4][768]) {
+  const int SIZE = 768;
+  for (size_t r = 0; r < 4; r++) {
+    const bfloat16 *__restrict pIn = &in[r][0];
+    bfloat16 *__restrict pExp =
+        &out[r][0]; // Reusing output buffer to buffer intermediate exp results.
+    bfloat16 *__restrict pOut = &out[r][0];
+    float accum_exp_val = exp_bf16<16>(SIZE, pIn, pExp);
+    bfloat16 accum_inv = compute_inv_as_bf16(accum_exp_val);
+    for (unsigned i = 0; i < SIZE / 16 + (SIZE % 16 != 0); i++)
+      chess_prepare_for_pipelining chess_loop_range(4, ) {
+        aie::vector<bfloat16, 16> in_elems = aie::load_v<16>(pOut);
+        aie::accum<accfloat, 16> out_vals = aie::mul(in_elems, accum_inv);
+        aie::store_v(pOut, out_vals.template to_vector<bfloat16>());
+        pOut += 16;
+      }
+  }
+}
+
+void softmax_bf16_4_1024(const bfloat16 in[4][1024], bfloat16 out[4][1024]) {
   const int SIZE = 1024;
   for (size_t r = 0; r < 4; r++) {
     const bfloat16 *__restrict pIn = &in[r][0];

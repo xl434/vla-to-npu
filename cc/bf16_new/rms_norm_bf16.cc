@@ -59,4 +59,8 @@ void rms_norm(bfloat16 A_in[4][768], bfloat16 B_in[768], bfloat16 C_out[4][768])
 rms_norm_single_batch<4, 768>(&A_in[0][0], B_in, &C_out[0][0]);
 }
 
+void rms_norm_small(bfloat16 A_in[4][192], bfloat16 B_in[192], bfloat16 C_out[4][192]) {
+rms_norm_single_batch<4, 192>(&A_in[0][0], B_in, &C_out[0][0]);
+}
+
 } // extern "C"

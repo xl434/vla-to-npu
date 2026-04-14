@@ -63,7 +63,15 @@ def _test_softmax_float_64_64():
     torch.manual_seed(0)
     input_tensor = torch.randn(SEQ_TILED, SEQ * HEAD_TILE, dtype=torch.float32)
 
-    ref = softmax_torch(input_tensor, SEQ_TILED, HEAD_TILE, SEQ)  # [64, H*64]
+    # CPU reference
+    with torch.no_grad():
+        start = time.perf_counter()
+        input_numpy_cpu = input_tensor.cpu().numpy()                                        # input data prep
+        ref = softmax_torch(torch.from_numpy(input_numpy_cpu), SEQ_TILED, HEAD_TILE, SEQ)  # compute
+        ref_flat = ref.view(SEQ_TILED, HEAD_TILE * SEQ).detach().cpu().numpy()              # output retrieval
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
 
     softmax_mod = df.build(
         top,
@@ -73,28 +81,22 @@ def _test_softmax_float_64_64():
         num_iters=1000,  # execute multiple times for stable perf
     )
 
-    output_allo = np.zeros((SEQ_TILED, SEQ * HEAD_TILE), dtype=np.float32)
-
-    softmax_mod(input_tensor.cpu().numpy(), output_allo)
+    input_np = input_tensor.cpu().numpy()
+    num_runs = 1000
+    npu_times = []
+    for _ in range(num_runs):
+        output_allo = np.zeros((SEQ_TILED, SEQ * HEAD_TILE), dtype=np.float32)
+        t0 = time.perf_counter()
+        softmax_mod(input_np, output_allo)
+        t1 = time.perf_counter()
+        npu_times.append((t1 - t0) * 1e6)
 
     # Compare
-    ref_flat = ref.view(SEQ_TILED, HEAD_TILE * SEQ).detach().cpu().numpy()
     np.testing.assert_allclose(output_allo, ref_flat, rtol=1e-2, atol=0.0)
 
-    warmup=20
-    iters=100
-    label="cpu softmax"
-    torch.set_grad_enabled(False)
-    with torch.inference_mode():
-        for _ in range(warmup):
-            ref = softmax_torch(input_tensor, SEQ_TILED, HEAD_TILE, SEQ)
-        t0 = time.perf_counter()
-        for _ in range(iters):
-            ref = softmax_torch(input_tensor, SEQ_TILED, HEAD_TILE, SEQ)
-        t1 = time.perf_counter()
-    avg_us = (t1 - t0) / iters * 1e6  # convert to microseconds
-    print(f"{label} avg over {iters} iters (after {warmup} warmup): {avg_us:.1f} µs")
-    print("PASS! Unmasked softmax matches PyTorch reference within tolerance.")
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
+    print(f"Average NPU execution time: {sum(npu_times)/len(npu_times):.2f} us")
+    print(f"Min NPU execution time: {min(npu_times):.2f} us")
 
 def _test_softmax_float_1024_1024():
     # Logical shape: [1024, 1024]. Softmax over dim=-1 (1024 elements).
@@ -141,43 +143,41 @@ def _test_softmax_float_1024_1024():
     # Random input: logical [1024, 1024]
     torch.manual_seed(0)
     input_logical = torch.randn(LOGICAL_ROWS, LOGICAL_SEQ, dtype=torch.float32)
+
+    # CPU reference
+    with torch.no_grad():
+        start = time.perf_counter()
+        input_cpu = input_logical.cpu().numpy()                          # input data prep
+        ref = F.softmax(input_logical.float(), dim=-1)                   # compute
+        ref_np = ref.detach().cpu().numpy()                              # output retrieval
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+
     # Reshape to physical: [2048, 512]
     input_phys = input_logical.numpy().reshape(-1, PHYS_COLS)
     output_phys = np.zeros_like(input_phys)
 
     # Process in batches of [16, 512] (= 8 logical rows per batch)
-    t0 = time.perf_counter()
+    batch_times = []
     for b in range(NUM_BATCHES):
         start = b * BATCH_PHYS_ROWS
         end = start + BATCH_PHYS_ROWS
         batch_in = np.ascontiguousarray(input_phys[start:end])
         batch_out = np.zeros((BATCH_PHYS_ROWS, PHYS_COLS), dtype=np.float32)
+        t0 = time.perf_counter()
         softmax_mod(batch_in, batch_out)
+        t1 = time.perf_counter()
+        batch_times.append((t1 - t0) * 1e6)
         output_phys[start:end] = batch_out
-    t1 = time.perf_counter()
-    npu_us = (t1 - t0) * 1e6
-    npu_avg_us = npu_us / NUM_BATCHES
-    print(f"NPU softmax avg per tile: {npu_avg_us:.1f} µs")
 
     # Compare against PyTorch reference
-    ref = F.softmax(input_logical.float(), dim=-1)
     output_logical = output_phys.reshape(LOGICAL_ROWS, LOGICAL_SEQ)
-    ref_np = ref.detach().cpu().numpy()
     np.testing.assert_allclose(output_logical, ref_np, rtol=1e-2, atol=0.0)
 
-    # CPU baseline timing
-    warmup = 20
-    iters = 100
-    torch.set_grad_enabled(False)
-    with torch.inference_mode():
-        for _ in range(warmup):
-            _ = F.softmax(input_logical.float(), dim=-1)
-        t0 = time.perf_counter()
-        for _ in range(iters):
-            _ = F.softmax(input_logical.float(), dim=-1)
-        t1 = time.perf_counter()
-    cpu_avg_us = (t1 - t0) / iters * 1e6
-    print(f"CPU softmax avg per tile: {cpu_avg_us:.1f} µs")
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
+    print(f"Average NPU execution time: {sum(batch_times)/len(batch_times):.2f} us")
+    print(f"Min NPU execution time: {min(batch_times):.2f} us")
 
 
 if __name__ == "__main__":

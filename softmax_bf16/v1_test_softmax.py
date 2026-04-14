@@ -82,19 +82,17 @@ def _test_softmax_bf16_64_64():
     ref_flat = ref.view(SEQ_TILED, HEAD_TILE * SEQ).detach().cpu().numpy().astype(np.float32)
     np.testing.assert_allclose(output_allo.astype(np.float32), ref_flat, atol=1e-1, rtol=1e-2,)
 
-    warmup=20
-    iters=100
-    label="cpu softmax"
-    torch.set_grad_enabled(False)
-    with torch.inference_mode():
-        for _ in range(warmup):
-            ref = softmax_torch(torch_in, SEQ_TILED, HEAD_TILE, SEQ)
-        t0 = time.perf_counter()
-        for _ in range(iters):
-            ref = softmax_torch(torch_in, SEQ_TILED, HEAD_TILE, SEQ)
-        t1 = time.perf_counter()
-    avg_us = (t1 - t0) / iters * 1e6  # convert to microseconds
-    print(f"{label} avg over {iters} iters (after {warmup} warmup): {avg_us:.1f} µs")
+    # CPU Execution Time
+    with torch.no_grad():
+        start = time.perf_counter()
+        input_numpy_cpu = input_tensor.copy()                                               # input data prep
+        torch_tmp = torch.from_numpy(input_numpy_cpu.astype(np.float32)).to(torch.bfloat16) # input data prep
+        ref = softmax_torch(torch_tmp, SEQ_TILED, HEAD_TILE, SEQ)                           # compute
+        ref_numpy = ref.view(SEQ_TILED, HEAD_TILE * SEQ).detach().cpu().numpy().astype(np.float32)  # output retrieval
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
     print("PASS! softmax matches PyTorch reference within tolerance.")
 
 def _test_softmax_bf16_32_64():
@@ -144,19 +142,17 @@ def _test_softmax_bf16_32_64():
     ref_flat = ref.view(SEQ_TILED, HEAD_TILE * SEQ).detach().cpu().numpy().astype(np.float32)
     np.testing.assert_allclose(output_allo.astype(np.float32), ref_flat, atol=1e-1, rtol=1e-2,)
 
-    warmup=20
-    iters=100
-    label="cpu softmax"
-    torch.set_grad_enabled(False)
-    with torch.inference_mode():
-        for _ in range(warmup):
-            ref = softmax_torch(torch_in, SEQ_TILED, HEAD_TILE, SEQ)
-        t0 = time.perf_counter()
-        for _ in range(iters):
-            ref = softmax_torch(torch_in, SEQ_TILED, HEAD_TILE, SEQ)
-        t1 = time.perf_counter()
-    avg_us = (t1 - t0) / iters * 1e6  # convert to microseconds
-    print(f"{label} avg over {iters} iters (after {warmup} warmup): {avg_us:.1f} µs")
+    # CPU Execution Time
+    with torch.no_grad():
+        start = time.perf_counter()
+        input_numpy_cpu = input_tensor.copy()                                               # input data prep
+        torch_tmp = torch.from_numpy(input_numpy_cpu.astype(np.float32)).to(torch.bfloat16) # input data prep
+        ref = softmax_torch(torch_tmp, SEQ_TILED, HEAD_TILE, SEQ)                           # compute
+        ref_numpy = ref.view(SEQ_TILED, HEAD_TILE * SEQ).detach().cpu().numpy().astype(np.float32)  # output retrieval
+        end = time.perf_counter()
+
+    cpu_time_us = (end - start) * 1_000_000
+    print(f"CPU execution time: {cpu_time_us:.2f} us")
     print("PASS! softmax matches PyTorch reference within tolerance.")
 
 if __name__ == "__main__":

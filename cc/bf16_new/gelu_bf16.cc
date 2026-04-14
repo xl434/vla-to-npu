@@ -127,6 +127,54 @@ void gelu_bfloat16(bfloat16 input_x[4][768], bfloat16 output_x[4][768]) {
   }
 }
 
+void gelu_bfloat16_small(bfloat16 input_x[1][192], bfloat16 output_x[1][192]) {
+  event0();
+ 
+  constexpr int SEQ_TILE       = 1;
+  constexpr int FEATURE_DIM    = 192;
+  constexpr int vec_factor     = 16;
+
+  using vec_t = aie::vector<bfloat16, vec_factor>;
+  using fvec_t = aie::vector<float, vec_factor>; 
+ 
+  const fvec_t C1       = aie::broadcast<float, vec_factor>(0.7978845608f);  // sqrt(2/π)
+  const fvec_t C2       = aie::broadcast<float, vec_factor>(0.044715f);
+  const fvec_t ONE      = aie::broadcast<float, vec_factor>(1.0f);
+  const fvec_t ONE_HALF = aie::broadcast<float, vec_factor>(0.5f);
+ 
+  for (int s = 0; s < SEQ_TILE; ++s) {
+    bfloat16 *__restrict in_ptr  = &input_x[s][0];
+    bfloat16 *__restrict out_ptr = &output_x[s][0];
+ 
+    for (int i = 0; i < FEATURE_DIM; i += vec_factor) {
+
+      // bfloat16 -> float
+      vec_t x_bf16 = aie::load_v<vec_factor>(in_ptr + i);
+      fvec_t x = bf16_to_float(x_bf16);
+
+      // inner = C1 · x · (1 + C2·x²)
+      fvec_t temp  = aie::mul(x,  x);
+      temp = aie::mul(temp, x);
+      fvec_t cubic = aie::mul(C2, temp);
+      temp  = aie::add(x, cubic);
+      fvec_t inner = aie::mul(C1, temp);
+
+      // tanh(inner)
+      fvec_t t = get_tanh_vec<float, vec_factor>(inner);
+
+      // out = 0.5 · x · (1 + tanh(inner))
+      fvec_t t1   = aie::add(t, ONE);
+      temp = aie::mul(x, t1);
+      fvec_t outf = aie::mul(ONE_HALF, temp);
+
+      // float -> bfloat16
+      vec_t outv = float_to_bf16(outf);
+      aie::store_v(out_ptr + i, outv);
+    }
+  event1();
+  }
+}
+
 // // No conversion
 // void gelu_bfloat16(bfloat16 input_x[4][768], bfloat16 output_x[4][768]) {
 //   event0();
@@ -176,6 +224,10 @@ extern "C" {
 
 void gelu(bfloat16 input_x[4][768], bfloat16 output_x[4][768]) {
 gelu_bfloat16(input_x, output_x);
+}
+
+void gelu_small(bfloat16 input_x[1][192], bfloat16 output_x[1][192]) {
+gelu_bfloat16_small(input_x, output_x);
 }
 
 } // extern "C"
