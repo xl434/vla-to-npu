@@ -230,12 +230,15 @@ def main():
     torch.manual_seed(0)
     np.random.seed(0)
 
-    def rand_mat(m, n): return rng.standard_normal((m, n)).astype(np_bfloat16)
+    # Xavier-style scaling: 1/sqrt(fan_in) prevents accumulation blowup in bf16
+    # Without this, connector's 192-tile GEMM (K=12288) produces values in 1000s range,
+    # causing SiLU overflow and NaN cascades in subsequent layers.
+    def rand_mat(m, n): return (rng.standard_normal((m, n)) / np.sqrt(m)).astype(np_bfloat16)
     def rand_vec(n):    return rng.standard_normal((n,)).astype(np_bfloat16)
 
     # --- Preprocessing params ---
     params_proc = dict(
-        kernel=rng.standard_normal((EMBD_P, CH, KERNEL_DIM, KERNEL_DIM)).astype(np_bfloat16)
+        kernel=(rng.standard_normal((EMBD_P, CH, KERNEL_DIM, KERNEL_DIM)) / np.sqrt(CH * KERNEL_DIM * KERNEL_DIM)).astype(np_bfloat16)
     )
 
     # --- Connector params ---
