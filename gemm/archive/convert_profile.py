@@ -1,6 +1,7 @@
 import csv
 import json
 from collections import defaultdict
+from pathlib import Path
 
 def is_number(s):
     try:
@@ -19,8 +20,9 @@ data = defaultdict(lambda: {
     'bf16_fail': set()
 })
 
-csv_path = 'vla-to-npu/gemm/vla_profile.csv'
-with open(csv_path, newline='') as f:
+BASE_DIR = Path(__file__).resolve().parent
+csv_path = BASE_DIR / "vla_profile.csv"
+with csv_path.open(newline='', encoding='utf-8') as f:
     reader = csv.DictReader(f)
     # Strip whitespace from header names
     reader.fieldnames = [name.strip() for name in reader.fieldnames]
@@ -74,8 +76,9 @@ for key, metrics in data.items():
         }
 
 # Write JSON to file
-out_path = 'vla-to-npu/gemm/vla_profile.json'
-with open(out_path, 'w') as jf:
+out_path = BASE_DIR.parent / "profiling" / "data" / "vla_profile.json"
+out_path.parent.mkdir(parents=True, exist_ok=True)
+with out_path.open('w', encoding='utf-8') as jf:
     json.dump(final, jf, indent=2)
 
 print(f"Wrote JSON data to {out_path}")
