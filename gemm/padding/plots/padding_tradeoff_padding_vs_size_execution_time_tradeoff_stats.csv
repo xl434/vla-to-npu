@@ -1,0 +1,3 @@
+strategy,padding_median_us,execution_median_us,overhead_median_us,execution_p95_us,overhead_p95_us,count
+Manual Copy,187.804,486.345,189.94299999999998,5713.235499999999,1492.8409499999989,3540
+Torch ZeroPad2d,1594.366,560.845,1596.35,4133.947999999999,6650.9448999999995,3539
