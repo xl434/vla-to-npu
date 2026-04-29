@@ -66,7 +66,7 @@ gelu_bf16.prj/
   ├── input0.data        ← reference input  (raw binary)
   ├── output1.data       ← reference output (written after run)
   ├── test.cpp           ← auto-generated host driver (XRT)
-  ├── CMakeLists.txt     ← build system for test.cpp
+  ├── CMakeLists.txt     ← build system for test.cpp  
   └── build/
         ├── top          ← compiled host executable
         └── final.xclbin ← copy here for convenience
