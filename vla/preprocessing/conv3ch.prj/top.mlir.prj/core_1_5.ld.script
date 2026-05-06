@@ -1,0 +1,103 @@
+
+MEMORY
+{
+   program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+   data (!RX) : ORIGIN = 0x7D040, LENGTH = 0x2FC0
+}
+ENTRY(__start)
+SECTIONS
+{
+  . = 0x0;
+  .text : {
+     /* the __start symbol has to come at address zero. */
+     *crt0.o(.text*)
+     _ctors_start = .;
+     _init_array_start = .;
+     KEEP(SORT(*.init_array))
+     _ctors_end = .;
+     _init_array_end = .;
+     _dtors_start = .;
+     _dtors_end = .;
+     *(.text*)
+  } > program
+  .data : {
+     *(.data*)
+     *(.rodata*)
+  } > data
+  .comment : {
+     *(.comment*)
+  }
+  .symtab : {
+     *(.symtab)
+  }
+  .shstrtab : {
+     *(.shstrtab)
+  }
+  .strtab : {
+     *(.strtab)
+  }
+
+. = 0x70000;
+_sp_start_value_DM_stack = .;
+. += 0x400; /* stack */
+. = 0x4D000;
+fifo_29_buff_0 = .;
+. += 0x20;
+. = 0x4D020;
+fifo_29_buff_1 = .;
+. += 0x20;
+. = 0x4C400;
+fifo_20_7_cons_buff_0 = .;
+. += 0x600;
+. = 0x4CA00;
+fifo_20_7_cons_buff_1 = .;
+. += 0x600;
+. = 0x40400;
+fifo_7_cons_buff_0 = .;
+. += 0x6000;
+. = 0x46400;
+fifo_7_cons_buff_1 = .;
+. += 0x6000;
+. = 0x5D000;
+fifo_25_buff_0 = .;
+. += 0x20;
+. = 0x5D020;
+fifo_25_buff_1 = .;
+. += 0x20;
+. = 0x5C400;
+fifo_20_5_cons_buff_0 = .;
+. += 0x600;
+. = 0x5CA00;
+fifo_20_5_cons_buff_1 = .;
+. += 0x600;
+. = 0x50400;
+fifo_3_cons_buff_0 = .;
+. += 0x6000;
+. = 0x56400;
+fifo_3_cons_buff_1 = .;
+. += 0x6000;
+/* No tile with memory exists to the north. */
+. = 0x60000;
+. += 0x10000;
+. = 0x7D000;
+fifo_30_buff_0 = .;
+. += 0x20;
+. = 0x7D020;
+fifo_30_buff_1 = .;
+. += 0x20;
+. = 0x7C400;
+fifo_20_15_cons_buff_0 = .;
+. += 0x600;
+. = 0x7CA00;
+fifo_20_15_cons_buff_1 = .;
+. += 0x600;
+. = 0x70400;
+fifo_8_cons_buff_0 = .;
+. += 0x6000;
+. = 0x76400;
+fifo_8_cons_buff_1 = .;
+. += 0x6000;
+  .bss : { *(.bss*) } > data
+}
+INPUT(external0.o)
+PROVIDE(main = core_1_5);

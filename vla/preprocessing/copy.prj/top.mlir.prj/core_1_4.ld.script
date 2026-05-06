@@ -1,0 +1,93 @@
+
+MEMORY
+{
+   program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+   data (!RX) : ORIGIN = 0x70500, LENGTH = 0xFB00
+}
+ENTRY(__start)
+SECTIONS
+{
+  . = 0x0;
+  .text : {
+     /* the __start symbol has to come at address zero. */
+     *crt0.o(.text*)
+     _ctors_start = .;
+     _init_array_start = .;
+     KEEP(SORT(*.init_array))
+     _ctors_end = .;
+     _init_array_end = .;
+     _dtors_start = .;
+     _dtors_end = .;
+     *(.text*)
+  } > program
+  .data : {
+     *(.data*)
+     *(.rodata*)
+  } > data
+  .comment : {
+     *(.comment*)
+  }
+  .symtab : {
+     *(.symtab)
+  }
+  .shstrtab : {
+     *(.shstrtab)
+  }
+  .strtab : {
+     *(.strtab)
+  }
+
+. = 0x70000;
+_sp_start_value_DM_stack = .;
+. += 0x400; /* stack */
+. = 0x40400;
+fifo_15_buff_0 = .;
+. += 0x40;
+. = 0x40440;
+fifo_15_buff_1 = .;
+. += 0x40;
+. = 0x40480;
+fifo_5_cons_buff_0 = .;
+. += 0x40;
+. = 0x404C0;
+fifo_5_cons_buff_1 = .;
+. += 0x40;
+. = 0x50400;
+fifo_12_buff_0 = .;
+. += 0x40;
+. = 0x50440;
+fifo_12_buff_1 = .;
+. += 0x40;
+. = 0x50480;
+fifo_2_cons_buff_0 = .;
+. += 0x40;
+. = 0x504C0;
+fifo_2_cons_buff_1 = .;
+. += 0x40;
+. = 0x60400;
+fifo_18_buff_0 = .;
+. += 0x40;
+. = 0x60440;
+fifo_18_buff_1 = .;
+. += 0x40;
+. = 0x60480;
+fifo_8_cons_buff_0 = .;
+. += 0x40;
+. = 0x604C0;
+fifo_8_cons_buff_1 = .;
+. += 0x40;
+. = 0x70400;
+fifo_17_buff_0 = .;
+. += 0x40;
+. = 0x70440;
+fifo_17_buff_1 = .;
+. += 0x40;
+. = 0x70480;
+fifo_7_cons_buff_0 = .;
+. += 0x40;
+. = 0x704C0;
+fifo_7_cons_buff_1 = .;
+. += 0x40;
+  .bss : { *(.bss*) } > data
+}
+PROVIDE(main = core_1_4);
