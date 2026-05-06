@@ -6,5 +6,5 @@ CXX_DEFINES = -DDISABLE_ABI_CHECK=1
 
 CXX_INCLUDES = -I/opt/xilinx/xrt/include -I/opt/anaconda3/include -I/home/dl2239/allo/mlir-aie/runtime_lib/test_lib -I/home/dl2239/vla-to-npu/vla/connector/unified.prj
 
-CXX_FLAGS = -std=gnu++23
+CXX_FLAGS = -O3 -DNDEBUG -std=gnu++23
 

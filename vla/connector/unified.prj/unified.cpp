@@ -1,20 +1,16 @@
 // unified.cpp — connector pipeline for AMD NPU.
 //
 // Accumulation strategy:
-//   NPU GEMM outputs bfloat16. Accumulating 192 bfloat16 K-tiles in bfloat16
-//   causes compounding rounding error (~23% mean error observed). Fix: upcast
-//   each GEMM tile to float32 on CPU and accumulate into a float32 output.
-//   This eliminates the add NPU kernel entirely, dropping context opens from
-//   385 to 193 while drastically improving precision.
+//   NPU GEMM outputs bfloat16. Each bf16 GEMM tile is upcast to float32 on
+//   CPU and accumulated into out[]. Matches connector_bf16.py exactly.
 //
 // Context schedule:
 //   Phase 1 — pixel shuffle:
 //     { copy ctx }  allocate copy instr BO, run 256 copy calls
 //   Phase 2 — tiled GEMM + CPU float32 accumulate:
-//     for each of 192 K-tiles:
-//       { gemm ctx }  allocate gemm instr BO, run 1 gemm call
-//       CPU: upcast C_tmp (bf16) → float32, add to out[]
-//   Total context opens: 1 + 192 = 193.
+//     { gemm ctx }  allocate gemm instr BO once, run all 480 GEMM calls
+//                   (m=2 × n=15 × k=16 = 480)
+//   Total context opens: 2.
 
 #include "unified.h"
 
@@ -73,8 +69,9 @@ Connector::Connector(
     , trace_size_(trace_size)
     , device_(device_index)
     , A_shuf_(CONN_NEW_SEQ * CONN_NEW_EMBD)
-    , C_tmp_(CONN_GEMM_C_ELEMS)
     , a_tile_(CONN_GEMM_A_ELEMS)
+    , b_tile_(CONN_GEMM_B_ELEMS)
+    , c_tile_(CONN_GEMM_C_ELEMS)
 {
     copy_spec_.preload(device_, xclbin_copy, instr_copy);
     gemm_spec_.preload(device_, xclbin_gemm, instr_gemm);
@@ -191,7 +188,7 @@ void Connector::exec_gemm(
 // run() — mirrors fused_op() in connector_bf16.py
 //
 // out[] is float32. Each GEMM tile (bf16) is upcast to float32 before
-// accumulation, preventing compounding rounding error across 192 K-tiles.
+// accumulation, preventing compounding rounding error across 480 GEMM calls.
 // ---------------------------------------------------------------------------
 void Connector::run(
     const std::bfloat16_t *A,
@@ -227,37 +224,55 @@ void Connector::run(
     // ==================================================================
     // Phase 2 — Tiled GEMM + float32 accumulation on CPU
     //
-    // For each K-tile:
-    //   1. NPU GEMM: A_shuf_[:,i:i+K] × W[i:i+K,:] → C_tmp (bf16)
-    //   2. CPU: for each element, out[r,c] += (float)C_tmp[r,c]
+    // Triple loop: m (2) × n (15) × k (16) = 480 GEMM calls.
+    // One gemm hw_context is opened for ALL 480 calls.
     //
-    // Upcasting bf16 → float32 before accumulation eliminates the
-    // compounding rounding error from 192 sequential bf16 additions.
+    // A_tile [M_TILE, K_TILE]: gathered contiguously from A_shuf_ column slice.
+    // B_tile [K_TILE, N_TILE]: gathered contiguously from W 2D slice.
+    // C_tile [M_TILE, N_TILE]: scattered row-by-row into out[m*M:(m+1)*M, n*N:(n+1)*N].
     // ==================================================================
     if (verbosity_ >= 1) std::cout << "[Connector] Phase 2: tiled GEMM + float32 accumulate.\n";
 
-    for (int i = 0; i < CONN_NEW_EMBD; i += CONN_K) {
-        // Gather A_tile: [NEW_SEQ, K] column slice of A_shuf_
-        for (int r = 0; r < CONN_NEW_SEQ; ++r)
-            memcpy(&a_tile_[r * CONN_K],
-                   &A_shuf_[(size_t)r * CONN_NEW_EMBD + i],
-                   CONN_K * sizeof(std::bfloat16_t));
+    constexpr int n_m = CONN_NEW_SEQ  / CONN_M_TILE;  // 2
+    constexpr int n_k = CONN_NEW_EMBD / CONN_K_TILE;  // 16
+    constexpr int n_n = CONN_TEXT     / CONN_N_TILE;  // 15
 
-        const std::bfloat16_t *b_tile = &W[(size_t)i * CONN_TEXT];
+    {
+        xrt::hw_context ctx(device_, gemm_spec_.xclbin_obj.get_uuid());
+        xrt::kernel     gemm_k(ctx, gemm_spec_.kernel_name);
+        xrt::bo         bo_instr = make_instr_bo(device_, gemm_k, gemm_spec_.instr);
+        int             n_instr  = (int)gemm_spec_.instr.size();
 
-        // Run GEMM on NPU → C_tmp (bfloat16)
-        {
-            xrt::hw_context ctx(device_, gemm_spec_.xclbin_obj.get_uuid());
-            xrt::kernel     gemm_k(ctx, gemm_spec_.kernel_name);
-            xrt::bo         bo_instr = make_instr_bo(device_, gemm_k, gemm_spec_.instr);
-            int             n_instr  = (int)gemm_spec_.instr.size();
-            exec_gemm(gemm_k, bo_instr, n_instr, a_tile_.data(), b_tile, C_tmp_.data());
-        } // gemm ctx + instr BO destroyed
+        for (int m = 0; m < n_m; ++m) {
+            for (int n = 0; n < n_n; ++n) {
+                for (int k = 0; k < n_k; ++k) {
+                    // Gather A_tile [M_TILE, K_TILE] — contiguous from column slice of A_shuf_
+                    for (int r = 0; r < CONN_M_TILE; ++r)
+                        memcpy(&a_tile_[r * CONN_K_TILE],
+                               &A_shuf_[(size_t)(m * CONN_M_TILE + r) * CONN_NEW_EMBD
+                                        + k * CONN_K_TILE],
+                               CONN_K_TILE * sizeof(std::bfloat16_t));
 
-        // Upcast bf16 → float32 and accumulate into out
-        for (size_t idx = 0; idx < CONN_GEMM_C_ELEMS; ++idx)
-            out[idx] += (float)C_tmp_[idx];
-    }
+                    // Gather B_tile [K_TILE, N_TILE] — contiguous from row slice of W
+                    for (int r = 0; r < CONN_K_TILE; ++r)
+                        memcpy(&b_tile_[r * CONN_N_TILE],
+                               &W[(size_t)(k * CONN_K_TILE + r) * CONN_TEXT
+                                  + n * CONN_N_TILE],
+                               CONN_N_TILE * sizeof(std::bfloat16_t));
+
+                    exec_gemm(gemm_k, bo_instr, n_instr,
+                              a_tile_.data(), b_tile_.data(), c_tile_.data());
+
+                    // Scatter-accumulate C_tile [M_TILE, N_TILE] → out (float32)
+                    for (int r = 0; r < CONN_M_TILE; ++r)
+                        for (int c = 0; c < CONN_N_TILE; ++c)
+                            out[(size_t)(m * CONN_M_TILE + r) * CONN_TEXT
+                                + n * CONN_N_TILE + c] +=
+                                (float)c_tile_[r * CONN_N_TILE + c];
+                }
+            }
+        }
+    } // gemm ctx + instr BO destroyed
 
     if (verbosity_ >= 1) std::cout << "[Connector] Phase 2 done.\n";
 }
