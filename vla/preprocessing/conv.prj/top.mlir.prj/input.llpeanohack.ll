@@ -245,9 +245,9 @@ define void @core_3_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_40_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_4_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_13_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_18_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_18_cons_buff_0, ptr @fifo_20_4_cons_buff_0, ptr @fifo_40_buff_0)
+  call void @conv(ptr @fifo_18_cons_buff_0, ptr @fifo_20_13_cons_buff_0, ptr @fifo_40_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -255,9 +255,9 @@ define void @core_3_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_40_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_4_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_13_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_18_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_18_cons_buff_1, ptr @fifo_20_4_cons_buff_1, ptr @fifo_40_buff_1)
+  call void @conv(ptr @fifo_18_cons_buff_1, ptr @fifo_20_13_cons_buff_1, ptr @fifo_40_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -269,9 +269,9 @@ define void @core_3_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_40_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_4_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_13_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_18_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_18_cons_buff_0, ptr @fifo_20_4_cons_buff_0, ptr @fifo_40_buff_0)
+  call void @conv(ptr @fifo_18_cons_buff_0, ptr @fifo_20_13_cons_buff_0, ptr @fifo_40_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -291,9 +291,9 @@ define void @core_3_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_39_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_13_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_3_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_17_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_17_cons_buff_0, ptr @fifo_20_13_cons_buff_0, ptr @fifo_39_buff_0)
+  call void @conv(ptr @fifo_17_cons_buff_0, ptr @fifo_20_3_cons_buff_0, ptr @fifo_39_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -301,9 +301,9 @@ define void @core_3_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_39_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_13_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_3_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_17_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_17_cons_buff_1, ptr @fifo_20_13_cons_buff_1, ptr @fifo_39_buff_1)
+  call void @conv(ptr @fifo_17_cons_buff_1, ptr @fifo_20_3_cons_buff_1, ptr @fifo_39_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -315,9 +315,9 @@ define void @core_3_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_39_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_13_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_3_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_17_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_17_cons_buff_0, ptr @fifo_20_13_cons_buff_0, ptr @fifo_39_buff_0)
+  call void @conv(ptr @fifo_17_cons_buff_0, ptr @fifo_20_3_cons_buff_0, ptr @fifo_39_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -337,9 +337,9 @@ define void @core_3_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_38_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_14_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_7_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_16_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_16_cons_buff_0, ptr @fifo_20_14_cons_buff_0, ptr @fifo_38_buff_0)
+  call void @conv(ptr @fifo_16_cons_buff_0, ptr @fifo_20_7_cons_buff_0, ptr @fifo_38_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -347,9 +347,9 @@ define void @core_3_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_38_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_14_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_7_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_16_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_16_cons_buff_1, ptr @fifo_20_14_cons_buff_1, ptr @fifo_38_buff_1)
+  call void @conv(ptr @fifo_16_cons_buff_1, ptr @fifo_20_7_cons_buff_1, ptr @fifo_38_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -361,9 +361,9 @@ define void @core_3_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_38_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_14_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_7_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_16_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_16_cons_buff_0, ptr @fifo_20_14_cons_buff_0, ptr @fifo_38_buff_0)
+  call void @conv(ptr @fifo_16_cons_buff_0, ptr @fifo_20_7_cons_buff_0, ptr @fifo_38_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -383,9 +383,9 @@ define void @core_3_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_37_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_11_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_0_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_15_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_15_cons_buff_0, ptr @fifo_20_11_cons_buff_0, ptr @fifo_37_buff_0)
+  call void @conv(ptr @fifo_15_cons_buff_0, ptr @fifo_20_0_cons_buff_0, ptr @fifo_37_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -393,9 +393,9 @@ define void @core_3_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_37_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_11_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_0_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_15_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_15_cons_buff_1, ptr @fifo_20_11_cons_buff_1, ptr @fifo_37_buff_1)
+  call void @conv(ptr @fifo_15_cons_buff_1, ptr @fifo_20_0_cons_buff_1, ptr @fifo_37_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -407,9 +407,9 @@ define void @core_3_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_37_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_11_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_0_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_15_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_15_cons_buff_0, ptr @fifo_20_11_cons_buff_0, ptr @fifo_37_buff_0)
+  call void @conv(ptr @fifo_15_cons_buff_0, ptr @fifo_20_0_cons_buff_0, ptr @fifo_37_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -429,9 +429,9 @@ define void @core_2_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_35_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_3_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_11_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_13_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_13_cons_buff_0, ptr @fifo_20_3_cons_buff_0, ptr @fifo_35_buff_0)
+  call void @conv(ptr @fifo_13_cons_buff_0, ptr @fifo_20_11_cons_buff_0, ptr @fifo_35_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -439,9 +439,9 @@ define void @core_2_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_35_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_3_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_11_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_13_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_13_cons_buff_1, ptr @fifo_20_3_cons_buff_1, ptr @fifo_35_buff_1)
+  call void @conv(ptr @fifo_13_cons_buff_1, ptr @fifo_20_11_cons_buff_1, ptr @fifo_35_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -453,9 +453,9 @@ define void @core_2_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_35_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_3_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_11_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_13_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_13_cons_buff_0, ptr @fifo_20_3_cons_buff_0, ptr @fifo_35_buff_0)
+  call void @conv(ptr @fifo_13_cons_buff_0, ptr @fifo_20_11_cons_buff_0, ptr @fifo_35_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -521,9 +521,9 @@ define void @core_2_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_33_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_8_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_10_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_11_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_11_cons_buff_0, ptr @fifo_20_8_cons_buff_0, ptr @fifo_33_buff_0)
+  call void @conv(ptr @fifo_11_cons_buff_0, ptr @fifo_20_10_cons_buff_0, ptr @fifo_33_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -531,9 +531,9 @@ define void @core_2_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_33_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_8_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_10_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_11_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_11_cons_buff_1, ptr @fifo_20_8_cons_buff_1, ptr @fifo_33_buff_1)
+  call void @conv(ptr @fifo_11_cons_buff_1, ptr @fifo_20_10_cons_buff_1, ptr @fifo_33_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -545,9 +545,9 @@ define void @core_2_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_33_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_8_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_10_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_11_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_11_cons_buff_0, ptr @fifo_20_8_cons_buff_0, ptr @fifo_33_buff_0)
+  call void @conv(ptr @fifo_11_cons_buff_0, ptr @fifo_20_10_cons_buff_0, ptr @fifo_33_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -567,9 +567,9 @@ define void @core_2_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_32_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_5_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_14_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_10_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_10_cons_buff_0, ptr @fifo_20_5_cons_buff_0, ptr @fifo_32_buff_0)
+  call void @conv(ptr @fifo_10_cons_buff_0, ptr @fifo_20_14_cons_buff_0, ptr @fifo_32_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -577,9 +577,9 @@ define void @core_2_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_32_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_5_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_14_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_10_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_10_cons_buff_1, ptr @fifo_20_5_cons_buff_1, ptr @fifo_32_buff_1)
+  call void @conv(ptr @fifo_10_cons_buff_1, ptr @fifo_20_14_cons_buff_1, ptr @fifo_32_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -591,9 +591,9 @@ define void @core_2_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_32_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_5_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_14_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_10_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_10_cons_buff_0, ptr @fifo_20_5_cons_buff_0, ptr @fifo_32_buff_0)
+  call void @conv(ptr @fifo_10_cons_buff_0, ptr @fifo_20_14_cons_buff_0, ptr @fifo_32_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -613,9 +613,9 @@ define void @core_1_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_30_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_1_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_6_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_8_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_8_cons_buff_0, ptr @fifo_20_1_cons_buff_0, ptr @fifo_30_buff_0)
+  call void @conv(ptr @fifo_8_cons_buff_0, ptr @fifo_20_6_cons_buff_0, ptr @fifo_30_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -623,9 +623,9 @@ define void @core_1_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_30_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_1_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_6_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_8_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_8_cons_buff_1, ptr @fifo_20_1_cons_buff_1, ptr @fifo_30_buff_1)
+  call void @conv(ptr @fifo_8_cons_buff_1, ptr @fifo_20_6_cons_buff_1, ptr @fifo_30_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -637,9 +637,9 @@ define void @core_1_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_30_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_1_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_6_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_8_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_8_cons_buff_0, ptr @fifo_20_1_cons_buff_0, ptr @fifo_30_buff_0)
+  call void @conv(ptr @fifo_8_cons_buff_0, ptr @fifo_20_6_cons_buff_0, ptr @fifo_30_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -659,9 +659,9 @@ define void @core_1_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_29_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_9_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_8_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_7_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_7_cons_buff_0, ptr @fifo_20_9_cons_buff_0, ptr @fifo_29_buff_0)
+  call void @conv(ptr @fifo_7_cons_buff_0, ptr @fifo_20_8_cons_buff_0, ptr @fifo_29_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -669,9 +669,9 @@ define void @core_1_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_29_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_9_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_8_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_7_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_7_cons_buff_1, ptr @fifo_20_9_cons_buff_1, ptr @fifo_29_buff_1)
+  call void @conv(ptr @fifo_7_cons_buff_1, ptr @fifo_20_8_cons_buff_1, ptr @fifo_29_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -683,9 +683,9 @@ define void @core_1_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_29_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_9_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_8_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_7_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_7_cons_buff_0, ptr @fifo_20_9_cons_buff_0, ptr @fifo_29_buff_0)
+  call void @conv(ptr @fifo_7_cons_buff_0, ptr @fifo_20_8_cons_buff_0, ptr @fifo_29_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -705,9 +705,9 @@ define void @core_1_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_28_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_10_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_15_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_6_cons_buff_0, ptr @fifo_20_10_cons_buff_0, ptr @fifo_28_buff_0)
+  call void @conv(ptr @fifo_6_cons_buff_0, ptr @fifo_20_15_cons_buff_0, ptr @fifo_28_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -715,9 +715,9 @@ define void @core_1_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_28_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_10_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_15_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_6_cons_buff_1, ptr @fifo_20_10_cons_buff_1, ptr @fifo_28_buff_1)
+  call void @conv(ptr @fifo_6_cons_buff_1, ptr @fifo_20_15_cons_buff_1, ptr @fifo_28_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -729,9 +729,9 @@ define void @core_1_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_28_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_10_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_15_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_6_cons_buff_0, ptr @fifo_20_10_cons_buff_0, ptr @fifo_28_buff_0)
+  call void @conv(ptr @fifo_6_cons_buff_0, ptr @fifo_20_15_cons_buff_0, ptr @fifo_28_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -751,9 +751,9 @@ define void @core_1_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_27_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_12_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_1_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_5_cons_buff_0, ptr @fifo_20_12_cons_buff_0, ptr @fifo_27_buff_0)
+  call void @conv(ptr @fifo_5_cons_buff_0, ptr @fifo_20_1_cons_buff_0, ptr @fifo_27_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -761,9 +761,9 @@ define void @core_1_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_27_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_12_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_1_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_5_cons_buff_1, ptr @fifo_20_12_cons_buff_1, ptr @fifo_27_buff_1)
+  call void @conv(ptr @fifo_5_cons_buff_1, ptr @fifo_20_1_cons_buff_1, ptr @fifo_27_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -775,9 +775,9 @@ define void @core_1_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_27_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_12_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_1_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_5_cons_buff_0, ptr @fifo_20_12_cons_buff_0, ptr @fifo_27_buff_0)
+  call void @conv(ptr @fifo_5_cons_buff_0, ptr @fifo_20_1_cons_buff_0, ptr @fifo_27_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -797,9 +797,9 @@ define void @core_0_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_25_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_0_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_5_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_3_cons_buff_0, ptr @fifo_20_0_cons_buff_0, ptr @fifo_25_buff_0)
+  call void @conv(ptr @fifo_3_cons_buff_0, ptr @fifo_20_5_cons_buff_0, ptr @fifo_25_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -807,9 +807,9 @@ define void @core_0_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_25_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_0_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_5_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_3_cons_buff_1, ptr @fifo_20_0_cons_buff_1, ptr @fifo_25_buff_1)
+  call void @conv(ptr @fifo_3_cons_buff_1, ptr @fifo_20_5_cons_buff_1, ptr @fifo_25_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -821,9 +821,9 @@ define void @core_0_5() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_25_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_0_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_5_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_3_cons_buff_0, ptr @fifo_20_0_cons_buff_0, ptr @fifo_25_buff_0)
+  call void @conv(ptr @fifo_3_cons_buff_0, ptr @fifo_20_5_cons_buff_0, ptr @fifo_25_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -843,9 +843,9 @@ define void @core_0_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_24_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_6_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_4_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_2_cons_buff_0, ptr @fifo_20_6_cons_buff_0, ptr @fifo_24_buff_0)
+  call void @conv(ptr @fifo_2_cons_buff_0, ptr @fifo_20_4_cons_buff_0, ptr @fifo_24_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -853,9 +853,9 @@ define void @core_0_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_24_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_6_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_4_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_2_cons_buff_1, ptr @fifo_20_6_cons_buff_1, ptr @fifo_24_buff_1)
+  call void @conv(ptr @fifo_2_cons_buff_1, ptr @fifo_20_4_cons_buff_1, ptr @fifo_24_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -867,9 +867,9 @@ define void @core_0_4() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_24_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_6_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_4_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_2_cons_buff_0, ptr @fifo_20_6_cons_buff_0, ptr @fifo_24_buff_0)
+  call void @conv(ptr @fifo_2_cons_buff_0, ptr @fifo_20_4_cons_buff_0, ptr @fifo_24_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -889,9 +889,9 @@ define void @core_0_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_23_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_7_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_9_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_1_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_1_cons_buff_0, ptr @fifo_20_7_cons_buff_0, ptr @fifo_23_buff_0)
+  call void @conv(ptr @fifo_1_cons_buff_0, ptr @fifo_20_9_cons_buff_0, ptr @fifo_23_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -899,9 +899,9 @@ define void @core_0_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_23_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_7_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_9_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_1_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_1_cons_buff_1, ptr @fifo_20_7_cons_buff_1, ptr @fifo_23_buff_1)
+  call void @conv(ptr @fifo_1_cons_buff_1, ptr @fifo_20_9_cons_buff_1, ptr @fifo_23_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -913,9 +913,9 @@ define void @core_0_3() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_23_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_7_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_9_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_1_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_1_cons_buff_0, ptr @fifo_20_7_cons_buff_0, ptr @fifo_23_buff_0)
+  call void @conv(ptr @fifo_1_cons_buff_0, ptr @fifo_20_9_cons_buff_0, ptr @fifo_23_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -935,9 +935,9 @@ define void @core_0_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_22_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_15_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_12_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_0_cons_buff_0, ptr @fifo_20_15_cons_buff_0, ptr @fifo_22_buff_0)
+  call void @conv(ptr @fifo_0_cons_buff_0, ptr @fifo_20_12_cons_buff_0, ptr @fifo_22_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -945,9 +945,9 @@ define void @core_0_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_22_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_15_cons_buff_1, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_12_cons_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_cons_buff_1, i64 32) ]
-  call void @conv(ptr @fifo_0_cons_buff_1, ptr @fifo_20_15_cons_buff_1, ptr @fifo_22_buff_1)
+  call void @conv(ptr @fifo_0_cons_buff_1, ptr @fifo_20_12_cons_buff_1, ptr @fifo_22_buff_1)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)
@@ -959,9 +959,9 @@ define void @core_0_2() {
   call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.aie2.acquire(i32 52, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_22_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_15_cons_buff_0, i64 32) ]
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_20_12_cons_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_cons_buff_0, i64 32) ]
-  call void @conv(ptr @fifo_0_cons_buff_0, ptr @fifo_20_15_cons_buff_0, ptr @fifo_22_buff_0)
+  call void @conv(ptr @fifo_0_cons_buff_0, ptr @fifo_20_12_cons_buff_0, ptr @fifo_22_buff_0)
   call void @llvm.aie2.release(i32 48, i32 1)
   call void @llvm.aie2.release(i32 50, i32 1)
   call void @llvm.aie2.release(i32 53, i32 1)

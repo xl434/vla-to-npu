@@ -47,7 +47,7 @@ module {
     memref.copy %subview, %subview_0 {to = "local_C"} : memref<32xbf16, strided<[1]>> to memref<32xbf16, strided<[1]>>
     return
   }
-  func.func @copy_region(%arg0: memref<8x32xbf16>, %arg1: memref<1x256xbf16>) attributes {dataflow, itypes = "__"} {
+  func.func @copy(%arg0: memref<8x32xbf16>, %arg1: memref<1x256xbf16>) attributes {dataflow, itypes = "__"} {
     return
   }
 }

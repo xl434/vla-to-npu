@@ -53,10 +53,10 @@ fifo_2_cons_buff_0 = .;
 fifo_2_cons_buff_1 = .;
 . += 0x3000;
 . = 0x46400;
-fifo_0_1_cons_buff_0 = .;
+fifo_0_0_cons_buff_0 = .;
 . += 0x3000;
 . = 0x49400;
-fifo_0_1_cons_buff_1 = .;
+fifo_0_0_cons_buff_1 = .;
 . += 0x3000;
 /* No tile with memory exists to the west. */
 . = 0x50000;
@@ -74,10 +74,10 @@ fifo_3_cons_buff_0 = .;
 fifo_3_cons_buff_1 = .;
 . += 0x3000;
 . = 0x76400;
-fifo_0_0_cons_buff_0 = .;
+fifo_0_1_cons_buff_0 = .;
 . += 0x3000;
 . = 0x79400;
-fifo_0_0_cons_buff_1 = .;
+fifo_0_1_cons_buff_1 = .;
 . += 0x3000;
   .bss : { *(.bss*) } > data
 }

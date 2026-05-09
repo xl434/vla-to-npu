@@ -47,9 +47,9 @@ module attributes {llvm.target_triple = "aie2"} {
   llvm.func @matmul_bf16_bf16(!llvm.ptr, !llvm.ptr, !llvm.ptr) attributes {sym_visibility = "private"}
   llvm.func @core_0_3() {
     %0 = llvm.mlir.addressof @fifo_6_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_0_0_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_0_1_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_3_cons_buff_1 : !llvm.ptr
-    %3 = llvm.mlir.addressof @fifo_0_0_cons_buff_0 : !llvm.ptr
+    %3 = llvm.mlir.addressof @fifo_0_1_cons_buff_0 : !llvm.ptr
     %4 = llvm.mlir.addressof @fifo_3_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(true) : i1
     %6 = llvm.mlir.addressof @fifo_6_buff_0 : !llvm.ptr
@@ -196,9 +196,9 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_0_2() {
     %0 = llvm.mlir.addressof @fifo_5_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_0_1_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_0_0_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_2_cons_buff_1 : !llvm.ptr
-    %3 = llvm.mlir.addressof @fifo_0_1_cons_buff_0 : !llvm.ptr
+    %3 = llvm.mlir.addressof @fifo_0_0_cons_buff_0 : !llvm.ptr
     %4 = llvm.mlir.addressof @fifo_2_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(true) : i1
     %6 = llvm.mlir.addressof @fifo_5_buff_0 : !llvm.ptr

@@ -59,10 +59,10 @@ fifo_3_cons_buff_0 = .;
 fifo_3_cons_buff_1 = .;
 . += 0x3000;
 . = 0x66400;
-fifo_0_0_cons_buff_0 = .;
+fifo_0_1_cons_buff_0 = .;
 . += 0x3000;
 . = 0x69400;
-fifo_0_0_cons_buff_1 = .;
+fifo_0_1_cons_buff_1 = .;
 . += 0x3000;
 . = 0x7C400;
 fifo_5_buff_0 = .;
@@ -77,10 +77,10 @@ fifo_2_cons_buff_0 = .;
 fifo_2_cons_buff_1 = .;
 . += 0x3000;
 . = 0x76400;
-fifo_0_1_cons_buff_0 = .;
+fifo_0_0_cons_buff_0 = .;
 . += 0x3000;
 . = 0x79400;
-fifo_0_1_cons_buff_1 = .;
+fifo_0_0_cons_buff_1 = .;
 . += 0x3000;
   .bss : { *(.bss*) } > data
 }

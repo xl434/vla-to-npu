@@ -222,10 +222,10 @@ module attributes {llvm.target_triple = "aie2"} {
   llvm.func @conv(!llvm.ptr, !llvm.ptr, !llvm.ptr) attributes {sym_visibility = "private"}
   llvm.func @core_3_5() {
     %0 = llvm.mlir.addressof @fifo_18_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_4_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_13_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_40_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_18_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_4_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_13_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_40_buff_0 : !llvm.ptr
@@ -291,10 +291,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_3_4() {
     %0 = llvm.mlir.addressof @fifo_17_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_13_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_3_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_39_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_17_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_13_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_3_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_39_buff_0 : !llvm.ptr
@@ -360,10 +360,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_3_3() {
     %0 = llvm.mlir.addressof @fifo_16_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_14_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_7_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_38_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_16_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_14_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_7_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_38_buff_0 : !llvm.ptr
@@ -429,10 +429,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_3_2() {
     %0 = llvm.mlir.addressof @fifo_15_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_11_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_0_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_37_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_15_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_11_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_0_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_37_buff_0 : !llvm.ptr
@@ -498,10 +498,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_2_5() {
     %0 = llvm.mlir.addressof @fifo_13_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_3_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_11_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_35_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_13_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_3_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_11_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_35_buff_0 : !llvm.ptr
@@ -636,10 +636,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_2_3() {
     %0 = llvm.mlir.addressof @fifo_11_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_8_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_10_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_33_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_11_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_8_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_10_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_33_buff_0 : !llvm.ptr
@@ -705,10 +705,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_2_2() {
     %0 = llvm.mlir.addressof @fifo_10_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_5_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_14_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_32_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_10_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_5_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_14_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_32_buff_0 : !llvm.ptr
@@ -774,10 +774,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_1_5() {
     %0 = llvm.mlir.addressof @fifo_8_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_1_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_6_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_30_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_8_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_1_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_6_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_30_buff_0 : !llvm.ptr
@@ -843,10 +843,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_1_4() {
     %0 = llvm.mlir.addressof @fifo_7_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_9_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_8_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_29_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_7_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_9_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_8_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_29_buff_0 : !llvm.ptr
@@ -912,10 +912,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_1_3() {
     %0 = llvm.mlir.addressof @fifo_6_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_10_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_15_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_28_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_6_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_10_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_15_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_28_buff_0 : !llvm.ptr
@@ -981,10 +981,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_1_2() {
     %0 = llvm.mlir.addressof @fifo_5_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_12_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_1_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_27_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_5_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_12_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_1_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_27_buff_0 : !llvm.ptr
@@ -1050,10 +1050,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_0_5() {
     %0 = llvm.mlir.addressof @fifo_3_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_0_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_5_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_25_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_3_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_0_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_5_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_25_buff_0 : !llvm.ptr
@@ -1119,10 +1119,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_0_4() {
     %0 = llvm.mlir.addressof @fifo_2_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_6_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_4_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_24_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_2_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_6_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_4_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_24_buff_0 : !llvm.ptr
@@ -1188,10 +1188,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_0_3() {
     %0 = llvm.mlir.addressof @fifo_1_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_7_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_9_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_23_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_1_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_7_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_9_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_23_buff_0 : !llvm.ptr
@@ -1257,10 +1257,10 @@ module attributes {llvm.target_triple = "aie2"} {
   }
   llvm.func @core_0_2() {
     %0 = llvm.mlir.addressof @fifo_0_cons_buff_1 : !llvm.ptr
-    %1 = llvm.mlir.addressof @fifo_20_15_cons_buff_1 : !llvm.ptr
+    %1 = llvm.mlir.addressof @fifo_20_12_cons_buff_1 : !llvm.ptr
     %2 = llvm.mlir.addressof @fifo_22_buff_1 : !llvm.ptr
     %3 = llvm.mlir.addressof @fifo_0_cons_buff_0 : !llvm.ptr
-    %4 = llvm.mlir.addressof @fifo_20_15_cons_buff_0 : !llvm.ptr
+    %4 = llvm.mlir.addressof @fifo_20_12_cons_buff_0 : !llvm.ptr
     %5 = llvm.mlir.constant(32 : index) : i64
     %6 = llvm.mlir.constant(true) : i1
     %7 = llvm.mlir.addressof @fifo_22_buff_0 : !llvm.ptr

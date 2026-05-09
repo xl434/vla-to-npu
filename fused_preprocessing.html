@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fused Preprocessing: Conv2d Patch Embedding on AMD NPU</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { curve: 'basis' } });</script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 40px auto; padding: 0 24px; color: #1a1a1a; line-height: 1.6; }
+  h1 { border-bottom: 2px solid #4a90d9; padding-bottom: 10px; }
+  h2 { margin-top: 48px; border-bottom: 1px solid #ddd; padding-bottom: 6px; color: #2c5282; }
+  h3 { color: #2d3748; margin-top: 32px; }
+  pre { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.5; }
+  code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th { background: #eef2f7; text-align: left; padding: 8px 12px; border: 1px solid #cdd5e0; }
+  td { padding: 8px 12px; border: 1px solid #cdd5e0; }
+  tr:nth-child(even) { background: #f9fbfd; }
+  .mermaid { background: #fafcff; border: 1px solid #dde3ed; border-radius: 8px; padding: 24px; margin: 20px 0; text-align: center; }
+  .math-block { background: #fffbf0; border-left: 4px solid #f0b429; padding: 12px 16px; margin: 16px 0; border-radius: 0 6px 6px 0; }
+  .note { background: #e8f4fd; border-left: 4px solid #4a90d9; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 0.95em; }
+  .sram { background: #f0fff4; border-left: 4px solid #38a169; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 0.95em; }
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 40px 0; }
+</style>
+</head>
+<body>
+
+<h1>Fused Preprocessing: Conv2d Patch Embedding on AMD NPU</h1>
+
+<h2>Overview</h2>
+<p>
+  The fused preprocessing pipeline implements Conv2d patch embedding entirely on the AMD XDNA NPU —
+  converting a raw image into patch embeddings fed into a Vision Transformer (ViT).
+</p>
+<p><strong>Goal:</strong> Transform image <code>[C=3, 512, 512]</code> → patch embeddings <code>[1024, 768]</code></p>
+<p>
+  Mathematically equivalent to <code>torch.nn.Conv2d(3, 768, kernel_size=16, stride=16)</code>,
+  but decomposed into two NPU kernels: <strong>im2col</strong> and <strong>GEMM</strong>.
+</p>
+
+<div class="mermaid">
+flowchart TD
+    subgraph SETUP["CPU — one-time weight setup"]
+        K["kernel\n❰768, 3, 16, 16❱"] -->|"reshape → ❰768,768❱\ntile + transpose"| KT["kernel_B_tiles\n❰6, 768, 128❱\ncontiguous tiles"]
+    end
+
+    subgraph PREP["CPU — per-inference image prep  (~1.6 MB copy)"]
+        IMG["image\n❰3, 512, 512❱\nbfloat16"] -->|"reshape ❰3,32,16,512❱\ntranspose → ❰32,3,16,512❱\nreshape ❰32,48,512❱"| STRIPS["image_strips\n❰32, 48, 512❱"]
+    end
+
+    subgraph PHASE1["NPU Phase 1 — im2col  (128 calls)"]
+        STRIPS -->|"per call: strip row ph, quarter qt\nslice ❰48, 128❱"| IM["AIE Core\nim2col kernel\n384 vector ops, zero MACs"]
+        IM -->|"8 patches out\n❰8, 768❱"| PAT["patches\n❰1024, 768❱\nfully assembled"]
+    end
+
+    subgraph PHASE2["NPU Phase 2 — GEMM  (192 calls)"]
+        PAT -->|"per call: M-tile ❰32, 768❱"| GM["16 AIE Cores\n4 Pn lanes × 4 Pk K-chain stages\nbf16 matmul + f32 accumulation"]
+        KT -->|"N-tile ❰768, 128❱"| GM
+        GM -->|"output tile ❰32, 128❱"| OUT["output\n❰1024, 768❱\npatch embeddings ✓"]
+    end
+</div>
+
+<hr>
+
+<h2>Mathematical Background</h2>
+<p>
+  A 512×512 image with patch size 16×16 produces a <strong>32×32 = 1024 patch grid</strong>.
+  Each patch has <code>C × KH × KW = 3 × 16 × 16 = 768</code> elements.
+</p>
+<div class="math-block">
+<pre>output[seq, embd]  =  Σ_{c,ky,kx}  image[c, ph·16+ky, pw·16+kx]  ×  kernel[embd, c, ky, kx]
+
+where  seq = ph · PW + pw   (flattened patch index)</pre>
+</div>
+<p>Decomposing into im2col + GEMM:</p>
+<div class="math-block">
+<pre>patches[seq, k]      =  image[c, ph·16+ky, pw·16+kx]     where k = c·KH·KW + ky·KW + kx
+output[seq, embd]    =  patches[seq, :] @ kernel_B[:, embd]</pre>
+</div>
+
+<hr>
+
+<h2>NPU Kernel 1: im2col</h2>
+
+<h3>Purpose</h3>
+<p>
+  Rearranges image pixels from strip layout into <strong>patch-column layout</strong> —
+  each output row is one flattened patch vector of length 768, ready for matrix multiplication.
+</p>
+
+<h3>Dimensions</h3>
+<table>
+  <tr><th>Symbol</th><th>Value</th><th>Meaning</th></tr>
+  <tr><td><code>IMG2D</code></td><td>48</td><td>C × KH — flattened channel×row</td></tr>
+  <tr><td><code>PIX_QT</code></td><td>128</td><td>Pixel columns per quarter-row call</td></tr>
+  <tr><td><code>PW_QT</code></td><td>8</td><td>Patches per quarter-row call</td></tr>
+  <tr><td><code>K_FULL</code></td><td>768</td><td>C × KH × KW — full patch length</td></tr>
+</table>
+
+<h3>Call Pattern &amp; SRAM Budget</h3>
+<div class="sram">
+  <strong>128 total calls</strong> = PH (32 strip rows) × 4 (quarter-row divisions)<br><br>
+  Input &nbsp;[48, 128] = 12,288 B × 2 (double-buffer) = 24,576 B<br>
+  Output [8, 768] &nbsp;= 12,288 B × 2 (double-buffer) = 24,576 B<br>
+  Total: 49,152 B + ~1 KB stack <strong>&lt; 65,536 B ✓</strong>
+</div>
+
+<h3>Index Mapping</h3>
+<div class="math-block">
+<pre>pat[pw,  c·KH·KW + ky·KW + kx]  =  img[c·KH + ky,  pw·KW + kx]
+
+for pw ∈ [0, 8)
+  for c  ∈ [0, 3)
+    for ky ∈ [0, 16)
+      for kx ∈ [0, 16)   ← mapped to one 16-wide AIE vector op</pre>
+</div>
+
+<h3>Data Flow Diagram</h3>
+<div class="mermaid">
+flowchart LR
+    subgraph IN["img ❰48 × 128❱  — one quarter-strip"]
+        direction TB
+        r0["row  0 : c=0, ky=0  │ px0…px15 │ px16…px31 │ px32…px47 │ px48…px63 │ px64…px79 │ px80…px95 │ px96…px111 │ px112…px127"]
+        r1["row  1 : c=0, ky=1  │ px0…px15 │ px16…px31 │ …"]
+        rd1["⋮  rows 2 – 15  (c=0, ky=2..15)"]
+        r16["row 16 : c=1, ky=0  │ px0…px15 │ …"]
+        rd2["⋮  rows 17 – 31  (c=1, ky=1..15)"]
+        r32["row 32 : c=2, ky=0  │ px0…px15 │ …"]
+        rd3["⋮  rows 33 – 47  (c=2, ky=1..15)"]
+    end
+
+    subgraph CORE["AIE Core\n(single core, mapping=1)"]
+        direction TB
+        L1["aie::load_v&lt;16&gt;\n&amp;img[c·16+ky][pw·16]"]
+        L2["aie::store_v\n&amp;pat[pw][c·256+ky·16]"]
+        L1 -->|"16-element bf16 vector"| L2
+    end
+
+    subgraph OUT["pat ❰8 × 768❱  — 8 flattened patches"]
+        direction TB
+        p0["patch 0 │ c0·ky0·kx0..15 │ c0·ky1·kx0..15 │ … │ c2·ky15·kx0..15 │"]
+        p1["patch 1 │ c0·ky0·kx0..15 │ … │ c2·ky15·kx0..15 │"]
+        pd["⋮"]
+        p7["patch 7 │ c0·ky0·kx0..15 │ … │ c2·ky15·kx0..15 │"]
+    end
+
+    IN --> CORE --> OUT
+</div>
+
+<div class="note">
+  <strong>Vectorization:</strong> The inner <code>kx</code> dimension (size 16) maps exactly to one
+  16-element bfloat16 vector load/store. Total vector ops per call:
+  <code>PW_QT × CHANNELS × KH = 8 × 3 × 16 = 384</code>. No scalar fallback, no masking.
+</div>
+
+<hr>
+
+<h2>NPU Kernel 2: GEMM</h2>
+
+<h3>Purpose</h3>
+<p>
+  Multiplies the patch matrix against the pre-transposed conv kernel to produce patch embeddings:
+</p>
+<div class="math-block">
+<pre>patches[32, 768]  @  kernel_B[768, 128]  →  output[32, 128]</pre>
+</div>
+
+<h3>Core Configuration</h3>
+<table>
+  <tr><th>Parameter</th><th>Value</th><th>Meaning</th></tr>
+  <tr><td><code>Pm</code></td><td>1</td><td>M-parallel tiles (no M sharding)</td></tr>
+  <tr><td><code>Pn</code></td><td>4</td><td>N-parallel lanes</td></tr>
+  <tr><td><code>Pk</code></td><td>4</td><td>K-reduction chain depth</td></tr>
+  <tr><td><code>M_TILE</code></td><td>32</td><td>Rows per GEMM call (one patch row)</td></tr>
+  <tr><td><code>N_TILE</code></td><td>128</td><td>Output dims per call (4 × 32)</td></tr>
+  <tr><td><code>K_FULL</code></td><td>768</td><td>Full K dimension</td></tr>
+</table>
+
+<div class="sram">
+  <strong>16 total cores:</strong> Pm × Pn × Pk = 1 × 4 × 4 (exactly the NPU physical limit)<br><br>
+  A [32, 192] × 2 (double-buf) = 24,576 B<br>
+  B [192, 32] × 2 (double-buf) = 24,576 B<br>
+  C [32, &nbsp;32] × 4 (pipe depth) = &nbsp;8,192 B<br>
+  Total: ~57 KB <strong>&lt; 64 KB ✓</strong>
+</div>
+
+<h3>Call Pattern</h3>
+<div class="note">
+  <strong>192 total calls</strong> = n_m × n_n = 32 × 6<br>
+  n_m = SEQ / M_TILE = 1024 / 32 = 32<br>
+  n_n = EMBD_DIM / N_TILE = 768 / 128 = 6
+</div>
+
+<h3>16-Core Grid Diagram</h3>
+<p>
+  Each row is a Pn lane (handles a 32-column slice of C).
+  Each column is a Pk stage (handles a 192-element K-slice of A and B).
+  Stream pipes flow left → right, accumulating partial sums.
+</p>
+
+<div class="mermaid">
+flowchart LR
+    A["A_tile\n❰32 × 768❱\nreplicated to\nall 4 Pn lanes\nvia DMA"]
+
+    subgraph Bslices["B column slices  (sharded N)"]
+        direction TB
+        B0["K[0..191]\n❰192×32❱"]
+        B1["K[192..383]\n❰192×32❱"]
+        B2["K[384..575]\n❰192×32❱"]
+        B3["K[576..767]\n❰192×32❱"]
+    end
+
+    subgraph pn0["Pn=0  →  C[ 0..31,   0.. 31]"]
+        direction LR
+        c00["pk=0\nbf16 matmul\n❰32×192❱\n→ cast f32"] -->|"stream\npipe"| c01["pk=1\nmatmul\n+pipe acc"] -->|"stream\npipe"| c02["pk=2\nmatmul\n+pipe acc"] -->|"stream\npipe"| c03["pk=3\nmatmul\n+pipe acc\n→ write C"]
+    end
+
+    subgraph pn1["Pn=1  →  C[ 0..31,  32.. 63]"]
+        direction LR
+        c10["pk=0\nbf16 matmul\n→ cast f32"] -->|"stream\npipe"| c11["pk=1\nmatmul\n+pipe acc"] -->|"stream\npipe"| c12["pk=2\nmatmul\n+pipe acc"] -->|"stream\npipe"| c13["pk=3\nmatmul\n+pipe acc\n→ write C"]
+    end
+
+    subgraph pn2["Pn=2  →  C[ 0..31,  64.. 95]"]
+        direction LR
+        c20["pk=0\nbf16 matmul\n→ cast f32"] -->|"stream\npipe"| c21["pk=1\nmatmul\n+pipe acc"] -->|"stream\npipe"| c22["pk=2\nmatmul\n+pipe acc"] -->|"stream\npipe"| c23["pk=3\nmatmul\n+pipe acc\n→ write C"]
+    end
+
+    subgraph pn3["Pn=3  →  C[ 0..31,  96..127]"]
+        direction LR
+        c30["pk=0\nbf16 matmul\n→ cast f32"] -->|"stream\npipe"| c31["pk=1\nmatmul\n+pipe acc"] -->|"stream\npipe"| c32["pk=2\nmatmul\n+pipe acc"] -->|"stream\npipe"| c33["pk=3\nmatmul\n+pipe acc\n→ write C"]
+    end
+
+    A --> c00 & c10 & c20 & c30
+    B0 --> c00 & c10 & c20 & c30
+    B1 --> c01 & c11 & c21 & c31
+    B2 --> c02 & c12 & c22 & c32
+    B3 --> c03 & c13 & c23 & c33
+</div>
+
+<h3>K-Chain Accumulation (per core)</h3>
+<div class="math-block">
+<pre>pk=0:  partial = A[:,   0..191] @ B[  0..191, :]    (bf16 matmul → cast f32)
+       pipe.put(partial)
+
+pk=1:  partial = A[:, 192..383] @ B[192..383, :]
+       acc = partial_f32 + pipe.get()
+       pipe.put(acc)
+
+pk=2:  partial = A[:, 384..575] @ B[384..575, :]
+       acc = partial_f32 + pipe.get()
+       pipe.put(acc)
+
+pk=3:  partial = A[:, 576..767] @ B[576..767, :]
+       acc = partial_f32 + pipe.get()    ← sum of all 4 K-slices
+       C_local[:] = acc                  ← write output tile</pre>
+</div>
+
+<div class="note">
+  <strong>Type handling:</strong> matmul runs in <strong>bfloat16</strong> for hardware throughput;
+  inter-stage accumulation uses <strong>float32</strong> to avoid precision loss across 4 partial sums.
+  The implicit cast (<code>matmul_f32[:,:] = matmul_result[:,:]</code>) works around allo's type
+  inference limitation with mixed-type <code>allo.add</code>.
+</div>
+
+<hr>
+
+<h2>Static Weight Preparation</h2>
+<p>Kernel weights are pre-tiled once at model load time so each tile is contiguous — no per-call CPU gather.</p>
+<div class="math-block">
+<pre>kernel [768, 3, 16, 16]
+  reshape → [768, 768]          = [N, K]
+  for n in range(6):
+    kernel_B_tiles[n] = kernel_2d[n*128:(n+1)*128, :].T   shape [768, 128]
+
+Result: kernel_B_tiles [6, 768, 128]  — each tile contiguous in memory</pre>
+</div>
+
+<hr>
+
+<h2>im2col Kernel — Slide Diagram</h2>
+
+<div style="border:2px solid #ccc; border-radius:10px; padding:32px 36px; margin:28px 0; background:#fff; font-family:'Segoe UI',system-ui,sans-serif;">
+
+  <div style="color:#cc0000; font-size:1.55em; font-weight:700; margin-bottom:20px;">
+    im2col: Image-to-Column Patch Extraction
+  </div>
+
+  <div style="display:flex; gap:40px; align-items:flex-start; flex-wrap:wrap;">
+
+    <!-- Left: bullet points -->
+    <div style="flex:1; min-width:260px;">
+      <p style="margin:0 0 4px 0;">▷ <strong>Rearranges image pixels into patch-row layout</strong></p>
+      <ul style="margin:0 0 14px 18px; padding:0; list-style:none; line-height:1.9;">
+        <li>– Input: strip slice <code>[48 × 128]</code> (C·KH rows × 128 pixel-cols)</li>
+        <li>– Output: 8 flattened patches <code>[8 × 768]</code></li>
+        <li>– 128 total calls (32 strip-rows × 4 quarter-row divisions)</li>
+      </ul>
+
+      <p style="margin:0 0 4px 0;">▷ <strong>Scalar → Vector</strong>: inner <code>kx</code> loop (size 16)</p>
+      <ul style="margin:0 0 14px 18px; padding:0; list-style:none; line-height:1.9;">
+        <li>– Maps exactly to one 16-element bf16 <code>aie::load_v&lt;16&gt;</code></li>
+        <li>– No scalar fallback, no masking needed</li>
+        <li>– vec_factor = 16 (constrained by KW = 16)</li>
+      </ul>
+
+      <p style="margin:0 0 4px 0;">▷ <strong>Index mapping per vector op:</strong></p>
+      <div style="background:#fffbf0; border-left:4px solid #f0b429; padding:8px 12px; border-radius:0 6px 6px 0; font-family:monospace; font-size:0.87em; margin-bottom:14px; line-height:1.7;">
+        pat[pw, c·256 + ky·16 + kx]<br>
+        &nbsp;&nbsp;← img[c·16 + ky, pw·16 + kx]<br><br>
+        for pw ∈ [0,8), c ∈ [0,3), ky ∈ [0,16)<br>
+        &nbsp;&nbsp;kx: one 16-wide AIE vector load/store
+      </div>
+
+      <p style="margin:0 0 4px 0;">▷ <strong>SRAM Budget</strong> (64 KB local memory)</p>
+      <ul style="margin:0 0 14px 18px; padding:0; list-style:none; line-height:1.9;">
+        <li>– In &nbsp;[48,128] × 2 (dbl-buf) = 24,576 B</li>
+        <li>– Out [8,768] &nbsp;× 2 (dbl-buf) = 24,576 B</li>
+        <li>– Total 49 KB &lt; 64 KB ✓</li>
+      </ul>
+
+      <p style="color:#cc0000; font-weight:700; margin-top:8px; font-size:1.05em;">
+        384 vector ops per call &nbsp;·&nbsp; 0 MACs &nbsp;·&nbsp; pure data reorganisation
+      </p>
+    </div>
+
+    <!-- Right: SVG diagram -->
+    <div style="flex:1.2; min-width:300px;">
+      <svg viewBox="0 0 500 390" xmlns="http://www.w3.org/2000/svg"
+           style="width:100%; border:1px solid #dde3ed; border-radius:8px; background:#fafcff;">
+
+        <!-- INPUT label -->
+        <text x="10" y="18" font-size="11" font-weight="bold" fill="#2c5282">Input strip  [48 × 128]</text>
+
+        <!-- c=0 rows (green) -->
+        <rect x="10" y="24" width="190" height="13" fill="#c6f6d5" stroke="#38a169" stroke-width="0.8"/>
+        <text x="14" y="34" font-size="8.5" fill="#276749">c=0, ky=0 │ px 0 … 127</text>
+        <rect x="10" y="37" width="190" height="13" fill="#c6f6d5" stroke="#38a169" stroke-width="0.8"/>
+        <text x="14" y="47" font-size="8.5" fill="#276749">c=0, ky=1 │ …</text>
+        <text x="14" y="62" font-size="9" fill="#aaa">⋮  (ky 2–15)</text>
+
+        <!-- c=1 rows (blue) -->
+        <rect x="10" y="68" width="190" height="13" fill="#bee3f8" stroke="#3182ce" stroke-width="0.8"/>
+        <text x="14" y="78" font-size="8.5" fill="#2b6cb0">c=1, ky=0 │ px 0 … 127</text>
+        <text x="14" y="93" font-size="9" fill="#aaa">⋮  (ky 1–15)</text>
+
+        <!-- c=2 rows (red) -->
+        <rect x="10" y="99" width="190" height="13" fill="#fed7d7" stroke="#e53e3e" stroke-width="0.8"/>
+        <text x="14" y="109" font-size="8.5" fill="#c53030">c=2, ky=0 │ px 0 … 127</text>
+        <text x="14" y="124" font-size="9" fill="#aaa">⋮  (ky 1–15)</text>
+
+        <!-- kx blocks -->
+        <rect x="10"  y="130" width="23" height="9" fill="#fefcbf" stroke="#d69e2e" stroke-width="0.8"/>
+        <text x="21"  y="138" font-size="7" fill="#744210" text-anchor="middle">kx 0-15</text>
+        <rect x="33"  y="130" width="23" height="9" fill="#fefcbf" stroke="#d69e2e" stroke-width="0.8"/>
+        <text x="44"  y="138" font-size="7" fill="#744210" text-anchor="middle">kx 16-31</text>
+        <text x="62"  y="138" font-size="8" fill="#888">… ×8 patches</text>
+
+        <!-- AIE CORE box -->
+        <rect x="218" y="50" width="90" height="80" rx="8" fill="#e9d8fd" stroke="#805ad5" stroke-width="1.5"/>
+        <text x="263" y="72"  font-size="11" font-weight="bold" text-anchor="middle" fill="#553c9a">AIE Core</text>
+        <text x="263" y="87"  font-size="9"  text-anchor="middle" fill="#553c9a">mapping = 1</text>
+        <line x1="230" y1="97" x2="296" y2="97" stroke="#805ad5" stroke-width="0.7" stroke-dasharray="3,2"/>
+        <text x="263" y="108" font-size="8.5" text-anchor="middle" fill="#553c9a">load_v&lt;16&gt;</text>
+        <text x="263" y="120" font-size="8.5" text-anchor="middle" fill="#553c9a">→ store_v  bf16×16</text>
+
+        <!-- arrows -->
+        <defs>
+          <marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+            <polygon points="0 0,7 3.5,0 7" fill="#444"/>
+          </marker>
+        </defs>
+        <line x1="200" y1="90" x2="216" y2="90" stroke="#444" stroke-width="1.5" marker-end="url(#arr)"/>
+        <line x1="310" y1="90" x2="326" y2="90" stroke="#444" stroke-width="1.5" marker-end="url(#arr)"/>
+        <text x="201" y="85" font-size="7.5" fill="#555">[48,128]</text>
+        <text x="311" y="85" font-size="7.5" fill="#555">[8,768]</text>
+
+        <!-- OUTPUT label -->
+        <text x="328" y="18" font-size="11" font-weight="bold" fill="#2c5282">Output patches  [8 × 768]</text>
+
+        <!-- patch rows -->
+        <rect x="328" y="24" width="160" height="14" fill="#c6f6d5" stroke="#38a169" stroke-width="0.8"/>
+        <text x="332" y="34" font-size="8" fill="#276749">patch 0 │ c0·ky0·kx0-15 │ c0·ky1… │ … │ c2·ky15…</text>
+        <rect x="328" y="38" width="160" height="14" fill="#c6f6d5" stroke="#38a169" stroke-width="0.8"/>
+        <text x="332" y="48" font-size="8" fill="#276749">patch 1 │ …</text>
+        <text x="332" y="63" font-size="9"  fill="#aaa">⋮</text>
+        <rect x="328" y="68" width="160" height="14" fill="#c6f6d5" stroke="#38a169" stroke-width="0.8"/>
+        <text x="332" y="78" font-size="8" fill="#276749">patch 7 │ …</text>
+
+        <!-- K breakdown -->
+        <text x="328" y="102" font-size="9.5" font-weight="bold" fill="#2d3748">K = 768 per row:</text>
+        <rect x="328" y="107" width="50" height="13" fill="#c6f6d5" stroke="#38a169" stroke-width="0.8"/>
+        <text x="353" y="117" text-anchor="middle" font-size="7.5" fill="#276749">c=0 (256)</text>
+        <rect x="378" y="107" width="50" height="13" fill="#bee3f8" stroke="#3182ce" stroke-width="0.8"/>
+        <text x="403" y="117" text-anchor="middle" font-size="7.5" fill="#2b6cb0">c=1 (256)</text>
+        <rect x="428" y="107" width="50" height="13" fill="#fed7d7" stroke="#e53e3e" stroke-width="0.8"/>
+        <text x="453" y="117" text-anchor="middle" font-size="7.5" fill="#c53030">c=2 (256)</text>
+        <text x="328" y="133" font-size="8" fill="#555">each block = KH×KW = 16×16 elements</text>
+
+        <!-- Loop order box -->
+        <rect x="10" y="155" width="478" height="68" rx="6" fill="#f0fff4" stroke="#38a169" stroke-width="1"/>
+        <text x="18" y="171" font-size="10" font-weight="bold" fill="#276749">Loop order (innermost = one 16-wide vector op):</text>
+        <text x="18" y="186" font-family="monospace" font-size="9" fill="#1a202c">for pw ∈ [0,8):  for c ∈ [0,3):  for ky ∈ [0,16):</text>
+        <text x="30" y="200" font-family="monospace" font-size="9" fill="#cc0000">  load_v&lt;16&gt;( &amp;img[c·16+ky][pw·16] )  →  store_v( &amp;pat[pw][c·256+ky·16] )</text>
+        <text x="18" y="215" font-family="monospace" font-size="9" fill="#555">  8 × 3 × 16 = 384 vector ops per call  ·  0 multiply-accumulates</text>
+
+        <!-- 128-call grid -->
+        <text x="10" y="242" font-size="10" font-weight="bold" fill="#2c5282">128-call dispatch  (32 strip-rows × 4 quarter-columns):</text>
+
+        <g transform="translate(10,250)">
+          <text x="-4" y="10"  font-size="7.5" fill="#555" text-anchor="end">ph=0</text>
+          <text x="-4" y="22"  font-size="7.5" fill="#555" text-anchor="end">ph=1</text>
+          <text x="-4" y="34"  font-size="7.5" fill="#888" text-anchor="end">⋮</text>
+          <text x="-4" y="46"  font-size="7.5" fill="#555" text-anchor="end">ph=31</text>
+
+          <text x="5"  y="-3" font-size="7.5" fill="#555" text-anchor="middle">qt=0</text>
+          <text x="17" y="-3" font-size="7.5" fill="#555" text-anchor="middle">qt=1</text>
+          <text x="29" y="-3" font-size="7.5" fill="#555" text-anchor="middle">qt=2</text>
+          <text x="41" y="-3" font-size="7.5" fill="#555" text-anchor="middle">qt=3</text>
+
+          <rect x="0"  y="2"  width="10" height="10" fill="#c6f6d5" stroke="#38a169" stroke-width="0.5"/>
+          <rect x="12" y="2"  width="10" height="10" fill="#bee3f8" stroke="#3182ce" stroke-width="0.5"/>
+          <rect x="24" y="2"  width="10" height="10" fill="#fefcbf" stroke="#d69e2e" stroke-width="0.5"/>
+          <rect x="36" y="2"  width="10" height="10" fill="#fed7d7" stroke="#e53e3e" stroke-width="0.5"/>
+
+          <rect x="0"  y="14" width="10" height="10" fill="#c6f6d5" stroke="#38a169" stroke-width="0.5"/>
+          <rect x="12" y="14" width="10" height="10" fill="#bee3f8" stroke="#3182ce" stroke-width="0.5"/>
+          <rect x="24" y="14" width="10" height="10" fill="#fefcbf" stroke="#d69e2e" stroke-width="0.5"/>
+          <rect x="36" y="14" width="10" height="10" fill="#fed7d7" stroke="#e53e3e" stroke-width="0.5"/>
+
+          <text x="5"  y="33" font-size="8" fill="#aaa" text-anchor="middle">⋮</text>
+          <text x="17" y="33" font-size="8" fill="#aaa" text-anchor="middle">⋮</text>
+          <text x="29" y="33" font-size="8" fill="#aaa" text-anchor="middle">⋮</text>
+          <text x="41" y="33" font-size="8" fill="#aaa" text-anchor="middle">⋮</text>
+
+          <rect x="0"  y="36" width="10" height="10" fill="#c6f6d5" stroke="#38a169" stroke-width="0.5"/>
+          <rect x="12" y="36" width="10" height="10" fill="#bee3f8" stroke="#3182ce" stroke-width="0.5"/>
+          <rect x="24" y="36" width="10" height="10" fill="#fefcbf" stroke="#d69e2e" stroke-width="0.5"/>
+          <rect x="36" y="36" width="10" height="10" fill="#fed7d7" stroke="#e53e3e" stroke-width="0.5"/>
+
+          <text x="58" y="12"  font-size="8.5" fill="#555">← each cell = 1 NPU call</text>
+          <text x="58" y="25"  font-size="8.5" fill="#555">   processes 8 patches → [8, 768]</text>
+          <text x="58" y="38"  font-size="8.5" fill="#555">   32 × 4 = 128 calls → 1024 patches</text>
+        </g>
+
+      </svg>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<h2>Complexity Summary</h2>
+<table>
+  <tr><th>Operation</th><th>Calls</th><th>Data per Call (in/out)</th><th>Arithmetic</th></tr>
+  <tr><td>im2col</td><td>128</td><td>12 KB / 12 KB</td><td>6,144 vector moves, 0 MACs</td></tr>
+  <tr><td>GEMM</td><td>192</td><td>~54 KB / 8 KB</td><td>32 × 768 × 128 = 3.1M MACs each</td></tr>
+</table>
+<p>
+  <strong>Total MACs:</strong> 192 × 32 × 128 × 768 / 2 ≈ <strong>603M</strong> — dominated by GEMM, as expected for a patch embedding layer.
+</p>
+
+</body>
+</html>

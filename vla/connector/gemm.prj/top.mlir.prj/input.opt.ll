@@ -38,32 +38,32 @@ define void @core_0_3() local_unnamed_addr {
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.release(i32 53, i32 1)
@@ -74,32 +74,32 @@ define void @core_0_3() local_unnamed_addr {
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.release(i32 53, i32 1)
@@ -115,32 +115,32 @@ define void @core_0_3() local_unnamed_addr {
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_3_cons_buff_0, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_6_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_3_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_3_cons_buff_1, ptr nonnull @fifo_6_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.release(i32 53, i32 1)
@@ -159,32 +159,32 @@ define void @core_0_2() local_unnamed_addr {
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.release(i32 53, i32 1)
@@ -195,32 +195,32 @@ define void @core_0_2() local_unnamed_addr {
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_1, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_1)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_1)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.release(i32 53, i32 1)
@@ -236,32 +236,32 @@ define void @core_0_2() local_unnamed_addr {
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_0, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_0, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_0, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_0, ptr nonnull @fifo_2_cons_buff_0, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.acquire(i32 49, i32 -1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.acquire(i32 51, i32 -1)
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_5_buff_0, i64 32) ]
   call void @llvm.assume(i1 true) [ "align"(ptr @fifo_2_cons_buff_1, i64 32) ]
-  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_1_cons_buff_1, i64 32) ]
-  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_1_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
+  call void @llvm.assume(i1 true) [ "align"(ptr @fifo_0_0_cons_buff_1, i64 32) ]
+  tail call void @matmul_bf16_bf16(ptr nonnull @fifo_0_0_cons_buff_1, ptr nonnull @fifo_2_cons_buff_1, ptr nonnull @fifo_5_buff_0)
   tail call void @llvm.aie2.release(i32 48, i32 1)
   tail call void @llvm.aie2.release(i32 50, i32 1)
   tail call void @llvm.aie2.release(i32 53, i32 1)

@@ -67,21 +67,21 @@ module {
     %fifo_1_cons_cons_lock_0 = aie.lock(%mem_tile_0_1, 1) {init = 0 : i32, sym_name = "fifo_1_cons_cons_lock_0"}
     %fifo_1_prod_lock_0 = aie.lock(%shim_noc_tile_0_0, 0) {init = 1 : i32, sym_name = "fifo_1_prod_lock_0"}
     %fifo_1_cons_lock_0 = aie.lock(%shim_noc_tile_0_0, 1) {init = 0 : i32, sym_name = "fifo_1_cons_lock_0"}
-    %fifo_0_0_cons_buff_0 = aie.buffer(%tile_0_3) {address = 25600 : i32, sym_name = "fifo_0_0_cons_buff_0"} : memref<32x192xbf16> 
-    %fifo_0_0_cons_buff_1 = aie.buffer(%tile_0_3) {address = 37888 : i32, sym_name = "fifo_0_0_cons_buff_1"} : memref<32x192xbf16> 
-    %fifo_0_0_cons_prod_lock_0 = aie.lock(%tile_0_3, 0) {init = 2 : i32, sym_name = "fifo_0_0_cons_prod_lock_0"}
-    %fifo_0_0_cons_cons_lock_0 = aie.lock(%tile_0_3, 1) {init = 0 : i32, sym_name = "fifo_0_0_cons_cons_lock_0"}
-    %fifo_0_1_cons_buff_0 = aie.buffer(%tile_0_2) {address = 25600 : i32, sym_name = "fifo_0_1_cons_buff_0"} : memref<32x192xbf16> 
-    %fifo_0_1_cons_buff_1 = aie.buffer(%tile_0_2) {address = 37888 : i32, sym_name = "fifo_0_1_cons_buff_1"} : memref<32x192xbf16> 
-    %fifo_0_1_cons_prod_lock_0 = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "fifo_0_1_cons_prod_lock_0"}
-    %fifo_0_1_cons_cons_lock_0 = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "fifo_0_1_cons_cons_lock_0"}
+    %fifo_0_0_cons_buff_0 = aie.buffer(%tile_0_2) {address = 25600 : i32, sym_name = "fifo_0_0_cons_buff_0"} : memref<32x192xbf16> 
+    %fifo_0_0_cons_buff_1 = aie.buffer(%tile_0_2) {address = 37888 : i32, sym_name = "fifo_0_0_cons_buff_1"} : memref<32x192xbf16> 
+    %fifo_0_0_cons_prod_lock_0 = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "fifo_0_0_cons_prod_lock_0"}
+    %fifo_0_0_cons_cons_lock_0 = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "fifo_0_0_cons_cons_lock_0"}
+    %fifo_0_1_cons_buff_0 = aie.buffer(%tile_0_3) {address = 25600 : i32, sym_name = "fifo_0_1_cons_buff_0"} : memref<32x192xbf16> 
+    %fifo_0_1_cons_buff_1 = aie.buffer(%tile_0_3) {address = 37888 : i32, sym_name = "fifo_0_1_cons_buff_1"} : memref<32x192xbf16> 
+    %fifo_0_1_cons_prod_lock_0 = aie.lock(%tile_0_3, 0) {init = 2 : i32, sym_name = "fifo_0_1_cons_prod_lock_0"}
+    %fifo_0_1_cons_cons_lock_0 = aie.lock(%tile_0_3, 1) {init = 0 : i32, sym_name = "fifo_0_1_cons_cons_lock_0"}
     %switchbox_0_1 = aie.switchbox(%mem_tile_0_1) {
       aie.connect<DMA : 0, North : 1>
       aie.connect<South : 3, DMA : 0>
     }
     %switchbox_0_2 = aie.switchbox(%tile_0_2) {
-      aie.connect<South : 1, DMA : 0>
       aie.connect<South : 1, North : 1>
+      aie.connect<South : 1, DMA : 0>
       aie.connect<East : 3, DMA : 1>
       aie.connect<East : 2, North : 3>
       aie.connect<DMA : 0, East : 0>
@@ -91,7 +91,7 @@ module {
       aie.connect<South : 3, DMA : 1>
       aie.connect<DMA : 0, East : 3>
     }
-    aie.flow(%mem_tile_0_1, DMA : 0, %tile_0_3, DMA : 0)
+    aie.flow(%mem_tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
     %switchbox_0_0 = aie.switchbox(%shim_noc_tile_0_0) {
       aie.connect<South : 3, North : 3>
       %0 = aie.amsel<5> (3)
@@ -167,48 +167,48 @@ module {
     ^bb2:  // pred: ^bb1
       aie.use_lock(%fifo_5_prod_lock_0, AcquireGreaterEqual, 1)
       func.call @fill_zeros_bf16_32_32_vector(%fifo_5_buff_0) {lib = "fill_zeros_bf16_32_32_vector"} : (memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_5_cons_lock_0, Release, 1)
       aie.use_lock(%fifo_5_prod_lock_0, AcquireGreaterEqual, 1)
       func.call @fill_zeros_bf16_32_32_vector(%fifo_5_buff_1) {lib = "fill_zeros_bf16_32_32_vector"} : (memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_5_cons_lock_0, Release, 1)
       %2 = arith.addi %0, %c2 : index
@@ -216,25 +216,25 @@ module {
     ^bb3:  // pred: ^bb1
       aie.use_lock(%fifo_5_prod_lock_0, AcquireGreaterEqual, 1)
       func.call @fill_zeros_bf16_32_32_vector(%fifo_5_buff_0) {lib = "fill_zeros_bf16_32_32_vector"} : (memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_2_cons_buff_0, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_2_cons_buff_1, %fifo_5_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_2_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_5_cons_lock_0, Release, 1)
       aie.end
@@ -252,48 +252,48 @@ module {
     ^bb2:  // pred: ^bb1
       aie.use_lock(%fifo_6_prod_lock_0, AcquireGreaterEqual, 1)
       func.call @fill_zeros_bf16_32_32_vector(%fifo_6_buff_0) {lib = "fill_zeros_bf16_32_32_vector"} : (memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_6_cons_lock_0, Release, 1)
       aie.use_lock(%fifo_6_prod_lock_0, AcquireGreaterEqual, 1)
       func.call @fill_zeros_bf16_32_32_vector(%fifo_6_buff_1) {lib = "fill_zeros_bf16_32_32_vector"} : (memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_1) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_6_cons_lock_0, Release, 1)
       %2 = arith.addi %0, %c2 : index
@@ -301,25 +301,25 @@ module {
     ^bb3:  // pred: ^bb1
       aie.use_lock(%fifo_6_prod_lock_0, AcquireGreaterEqual, 1)
       func.call @fill_zeros_bf16_32_32_vector(%fifo_6_buff_0) {lib = "fill_zeros_bf16_32_32_vector"} : (memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
-      aie.use_lock(%fifo_0_0_cons_cons_lock_0, AcquireGreaterEqual, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_0, %fifo_3_cons_buff_0, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, AcquireGreaterEqual, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_cons_lock_0, AcquireGreaterEqual, 1)
-      func.call @matmul_bf16_bf16(%fifo_0_0_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
-      aie.use_lock(%fifo_0_0_cons_prod_lock_0, Release, 1)
+      func.call @matmul_bf16_bf16(%fifo_0_1_cons_buff_1, %fifo_3_cons_buff_1, %fifo_6_buff_0) : (memref<32x192xbf16>, memref<192x32xbf16>, memref<32x32xbf16>) -> ()
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_3_cons_prod_lock_0, Release, 1)
       aie.use_lock(%fifo_6_cons_lock_0, Release, 1)
       aie.end
@@ -358,7 +358,7 @@ module {
     ^bb6:  // pred: ^bb3
       aie.end
     }
-    %mem_0_3 = aie.mem(%tile_0_3) {
+    %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%fifo_0_0_cons_prod_lock_0, AcquireGreaterEqual, 1)
@@ -369,45 +369,6 @@ module {
       aie.use_lock(%fifo_0_0_cons_prod_lock_0, AcquireGreaterEqual, 1)
       aie.dma_bd(%fifo_0_0_cons_buff_1 : memref<32x192xbf16>, 0, 6144) {bd_id = 1 : i32, next_bd_id = 0 : i32}
       aie.use_lock(%fifo_0_0_cons_cons_lock_0, Release, 1)
-      aie.next_bd ^bb1
-    ^bb3:  // pred: ^bb0
-      %1 = aie.dma_start(S2MM, 1, ^bb4, ^bb6)
-    ^bb4:  // 2 preds: ^bb3, ^bb5
-      aie.use_lock(%fifo_3_cons_prod_lock_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%fifo_3_cons_buff_0 : memref<192x32xbf16>, 0, 6144) {bd_id = 2 : i32, next_bd_id = 3 : i32}
-      aie.use_lock(%fifo_3_cons_cons_lock_0, Release, 1)
-      aie.next_bd ^bb5
-    ^bb5:  // pred: ^bb4
-      aie.use_lock(%fifo_3_cons_prod_lock_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%fifo_3_cons_buff_1 : memref<192x32xbf16>, 0, 6144) {bd_id = 3 : i32, next_bd_id = 2 : i32}
-      aie.use_lock(%fifo_3_cons_cons_lock_0, Release, 1)
-      aie.next_bd ^bb4
-    ^bb6:  // pred: ^bb3
-      %2 = aie.dma_start(MM2S, 0, ^bb7, ^bb9)
-    ^bb7:  // 2 preds: ^bb6, ^bb8
-      aie.use_lock(%fifo_6_cons_lock_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%fifo_6_buff_0 : memref<32x32xbf16>, 0, 1024) {bd_id = 4 : i32, next_bd_id = 5 : i32}
-      aie.use_lock(%fifo_6_prod_lock_0, Release, 1)
-      aie.next_bd ^bb8
-    ^bb8:  // pred: ^bb7
-      aie.use_lock(%fifo_6_cons_lock_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%fifo_6_buff_1 : memref<32x32xbf16>, 0, 1024) {bd_id = 5 : i32, next_bd_id = 4 : i32}
-      aie.use_lock(%fifo_6_prod_lock_0, Release, 1)
-      aie.next_bd ^bb7
-    ^bb9:  // pred: ^bb6
-      aie.end
-    }
-    %mem_0_2 = aie.mem(%tile_0_2) {
-      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-    ^bb1:  // 2 preds: ^bb0, ^bb2
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%fifo_0_1_cons_buff_0 : memref<32x192xbf16>, 0, 6144) {bd_id = 0 : i32, next_bd_id = 1 : i32}
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, Release, 1)
-      aie.next_bd ^bb2
-    ^bb2:  // pred: ^bb1
-      aie.use_lock(%fifo_0_1_cons_prod_lock_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%fifo_0_1_cons_buff_1 : memref<32x192xbf16>, 0, 6144) {bd_id = 1 : i32, next_bd_id = 0 : i32}
-      aie.use_lock(%fifo_0_1_cons_cons_lock_0, Release, 1)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 1, ^bb4, ^bb6)
@@ -432,6 +393,45 @@ module {
       aie.use_lock(%fifo_5_cons_lock_0, AcquireGreaterEqual, 1)
       aie.dma_bd(%fifo_5_buff_1 : memref<32x32xbf16>, 0, 1024) {bd_id = 5 : i32, next_bd_id = 4 : i32}
       aie.use_lock(%fifo_5_prod_lock_0, Release, 1)
+      aie.next_bd ^bb7
+    ^bb9:  // pred: ^bb6
+      aie.end
+    }
+    %mem_0_3 = aie.mem(%tile_0_3) {
+      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+    ^bb1:  // 2 preds: ^bb0, ^bb2
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, AcquireGreaterEqual, 1)
+      aie.dma_bd(%fifo_0_1_cons_buff_0 : memref<32x192xbf16>, 0, 6144) {bd_id = 0 : i32, next_bd_id = 1 : i32}
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, Release, 1)
+      aie.next_bd ^bb2
+    ^bb2:  // pred: ^bb1
+      aie.use_lock(%fifo_0_1_cons_prod_lock_0, AcquireGreaterEqual, 1)
+      aie.dma_bd(%fifo_0_1_cons_buff_1 : memref<32x192xbf16>, 0, 6144) {bd_id = 1 : i32, next_bd_id = 0 : i32}
+      aie.use_lock(%fifo_0_1_cons_cons_lock_0, Release, 1)
+      aie.next_bd ^bb1
+    ^bb3:  // pred: ^bb0
+      %1 = aie.dma_start(S2MM, 1, ^bb4, ^bb6)
+    ^bb4:  // 2 preds: ^bb3, ^bb5
+      aie.use_lock(%fifo_3_cons_prod_lock_0, AcquireGreaterEqual, 1)
+      aie.dma_bd(%fifo_3_cons_buff_0 : memref<192x32xbf16>, 0, 6144) {bd_id = 2 : i32, next_bd_id = 3 : i32}
+      aie.use_lock(%fifo_3_cons_cons_lock_0, Release, 1)
+      aie.next_bd ^bb5
+    ^bb5:  // pred: ^bb4
+      aie.use_lock(%fifo_3_cons_prod_lock_0, AcquireGreaterEqual, 1)
+      aie.dma_bd(%fifo_3_cons_buff_1 : memref<192x32xbf16>, 0, 6144) {bd_id = 3 : i32, next_bd_id = 2 : i32}
+      aie.use_lock(%fifo_3_cons_cons_lock_0, Release, 1)
+      aie.next_bd ^bb4
+    ^bb6:  // pred: ^bb3
+      %2 = aie.dma_start(MM2S, 0, ^bb7, ^bb9)
+    ^bb7:  // 2 preds: ^bb6, ^bb8
+      aie.use_lock(%fifo_6_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.dma_bd(%fifo_6_buff_0 : memref<32x32xbf16>, 0, 1024) {bd_id = 4 : i32, next_bd_id = 5 : i32}
+      aie.use_lock(%fifo_6_prod_lock_0, Release, 1)
+      aie.next_bd ^bb8
+    ^bb8:  // pred: ^bb7
+      aie.use_lock(%fifo_6_cons_lock_0, AcquireGreaterEqual, 1)
+      aie.dma_bd(%fifo_6_buff_1 : memref<32x32xbf16>, 0, 1024) {bd_id = 5 : i32, next_bd_id = 4 : i32}
+      aie.use_lock(%fifo_6_prod_lock_0, Release, 1)
       aie.next_bd ^bb7
     ^bb9:  // pred: ^bb6
       aie.end
