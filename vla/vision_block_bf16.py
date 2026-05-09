@@ -232,23 +232,23 @@ def gelu_kernel(
 # ##############################################################
 os.environ["ENABLE_AGGRESSIVE_PORT_UTILIZATION_PATCH"] = "1"
 
-layer_norm_mod = df.build(layer_norm_kernel, target="aie", project="norm_bf16.prj")
+layer_norm_mod = df.build(layer_norm_kernel, target="aie", project="vision_block/layer_norm_bf16.prj")
 
 gemm_embd_embd_mod = df.build(
     gemm_embd_embd_kernel,
-    project="gemm_embd_embd_bf16.prj",
+    project="vision_block/gemm_embd_embd_bf16.prj",
     target="aie",
     mapping_primitives=gemm_embd_embd_mp,
 )
 gemm_head_seq_mod = df.build(
     gemm_head_seq_kernel,
-    project="gemm_head_seq_bf16.prj",
+    project="vision_block/gemm_head_seq_bf16.prj",
     target="aie",
     mapping_primitives=gemm_head_seq_mp,
 )
 gemm_hid_embd_mod = df.build(
     gemm_hid_embd_kernel,
-    project="gemm_hid_embd_bf16.prj",
+    project="vision_block/gemm_hid_embd_bf16.prj",
     target="aie",
     mapping_primitives=gemm_hid_embd_mp,
 )
@@ -256,14 +256,14 @@ gemm_hid_embd_mod = df.build(
 
 gemm_score_mod = df.build(
     gemm_score_kernel,
-    project="gemm_score_bf16.prj",
+    project="vision_block/gemm_score_bf16.prj",
     target="aie",
     mapping_primitives=gemm_score_mp,
 )
 softmax_mod = df.build(
-    softmax_kernel, target="aie", project="softmax_f32.prj"
+    softmax_kernel, target="aie", project="vision_block/softmax_f32.prj"
 )
-gelu_mod = df.build(gelu_kernel, target="aie", project="gelu_bf16.prj")
+gelu_mod = df.build(gelu_kernel, target="aie", project="vision_block/gelu_bf16.prj")
 
 
 # ##############################################################
