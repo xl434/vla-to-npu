@@ -2,7 +2,7 @@
  * Copyright Allo authors. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
- * SiLU bf16 for per-core tile [4][256]
+ * SiLU bf16 for per-core tile [16][256]
  * (SmolVLA action expert: FFN_HID=2048, tiled 2048/8=256 per core)
  *
  * Uses float32 internally for the Taylor series to avoid bf16 overflow
@@ -18,9 +18,9 @@
 
 #define NOCPP
 
-void silu_bfloat16_256(bfloat16 input_x[4][256], bfloat16 output_x[4][256]) {
+void silu_bfloat16_256(bfloat16 input_x[16][256], bfloat16 output_x[16][256]) {
   event0();
-  constexpr int SEQ_TILE         = 4;
+  constexpr int SEQ_TILE         = 16;
   constexpr int FEATURE_DIM_TILE = 256;
   constexpr int vec_factor       = 16;  // float32: 16 per 512-bit register
 
@@ -111,7 +111,7 @@ void silu_bfloat16_256(bfloat16 input_x[4][256], bfloat16 output_x[4][256]) {
 }
 
 extern "C" {
-void silu_256_bf16(bfloat16 input_x[4][256], bfloat16 output_x[4][256]) {
+void silu_256_bf16(bfloat16 input_x[16][256], bfloat16 output_x[16][256]) {
     silu_bfloat16_256(input_x, output_x);
 }
 }

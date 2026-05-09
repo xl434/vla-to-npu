@@ -288,5 +288,5 @@ def _test_gelu_tiling_small():
 
 if __name__ == "__main__":
     # _test_gelu_single_tile()
-    # _test_gelu_tiling()
-    _test_gelu_tiling_small()
+    _test_gelu_tiling()
+    # _test_gelu_tiling_small()

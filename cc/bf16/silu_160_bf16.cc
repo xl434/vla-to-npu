@@ -2,7 +2,7 @@
  * Copyright Allo authors. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
- * SiLU bf16 for per-core tile [4][160]
+ * SiLU bf16 for per-core tile [16][160]
  * (SmolVLA text encoder: FFN_HID=2560, tiled 2560/16=160 per core)
  *
  * Uses float32 internally for the Taylor series to avoid bf16 overflow
@@ -26,9 +26,9 @@ aie::vector<float, vec_factor> linear_approx_f32(aie::vector<float, vec_factor> 
   return aie::add(aie::mul(x, c0_0041).template to_vector<float>(), c0_9736);
 }
 
-void silu_bfloat16_160(bfloat16 input_x[4][160], bfloat16 output_x[4][160]) {
+void silu_bfloat16_160(bfloat16 input_x[16][160], bfloat16 output_x[16][160]) {
   event0();
-  constexpr int SEQ_TILE         = 4;
+  constexpr int SEQ_TILE         = 16;
   constexpr int FEATURE_DIM_TILE = 160;
   constexpr int vec_factor       = 16;  // float32: 16 per 512-bit register
 
@@ -121,7 +121,7 @@ void silu_bfloat16_160(bfloat16 input_x[4][160], bfloat16 output_x[4][160]) {
 
 extern "C" {
 
-void silu_160_bf16(bfloat16 input_x[4][160], bfloat16 output_x[4][160]) {
+void silu_160_bf16(bfloat16 input_x[16][160], bfloat16 output_x[16][160]) {
     silu_bfloat16_160(input_x, output_x);
 }
 

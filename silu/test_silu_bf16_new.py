@@ -229,6 +229,6 @@ def _test_silu_bf16_new_tiling_small():
 
 
 if __name__ == "__main__":
-    # _test_silu_bf16_new_single_tile()
+    _test_silu_bf16_new_single_tile()
     # _test_silu_bf16_new_tiling()
-    _test_silu_bf16_new_tiling_small()
+    # _test_silu_bf16_new_tiling_small()

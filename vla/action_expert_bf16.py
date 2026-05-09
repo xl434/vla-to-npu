@@ -353,7 +353,7 @@ silu_ext = ExternalModule(
 )
 SILU_P0 = 1
 SILU_P1 = 8   # 2048 / 256 = 8 cores on feature dim
-SILU_SEQ_TILE = 4
+SILU_SEQ_TILE = 16
 SILU_Ly = [S(0), S(1)]
 
 @df.region()
@@ -372,13 +372,14 @@ def silu_kernel(
 # RoPE (float32 — trig functions need precision)
 # ----------------------------------------------------------------
 HEAD_DIM_HALF = HEAD_DIM // 2
-ROPE_TILE = 64  # RoPE kernels always process 64 rows; pad SEQ=32 → 64
+ROPE_TILE = 64  # legacy decomposed kernels — kept for compatibility
+ROPE_FUSED_TILE = 32  # rope_fused.cc is hard-coded to 32 rows per call
 
 VecLy = [S(0)]
 MatLy = [S(1), S(0)]
 OPS_IMPL = KERNEL_LIB_PATH + "rope_vec_ops.cc"
-SIN_IMPL = KERNEL_LIB_PATH + "sine.cc"
-COS_IMPL = KERNEL_LIB_PATH + "cosine.cc"
+SIN_COS_IMPL = KERNEL_LIB_PATH + "sin_cos.cc"
+ROPE_FUSED_IMPL = KERNEL_LIB_PATH + "rope_fused.cc"
 
 Ty_rope = float32
 
@@ -390,8 +391,7 @@ join_ext    = ExternalModule(top="join32_to_64_float32", impl_path=OPS_IMPL, inp
 mul32_ext   = ExternalModule(top="mul32_float32", impl_path=OPS_IMPL, input_idx=[0, 1], output_idx=[2])
 add32_ext   = ExternalModule(top="add32_float32", impl_path=OPS_IMPL, input_idx=[0, 1], output_idx=[2])
 sub32_ext   = ExternalModule(top="sub32_float32", impl_path=OPS_IMPL, input_idx=[0, 1], output_idx=[2])
-sin_ext     = ExternalModule(top="sin_float32", impl_path=SIN_IMPL, input_idx=[0], output_idx=[1])
-cos_ext     = ExternalModule(top="cos_float32", impl_path=COS_IMPL, input_idx=[0], output_idx=[1])
+sin_cos_ext = ExternalModule(top="sin_cos_float32", impl_path=SIN_COS_IMPL, input_idx=[0], output_idx=[1])
 
 @df.region()
 def radians_region(positions: Ty_rope[ROPE_TILE], inv_ts: Ty_rope[HEAD_DIM_HALF], radians32: Ty_rope[ROPE_TILE, HEAD_DIM_HALF]):
@@ -405,53 +405,66 @@ def pack_region(r32: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], r64: Ty_rope[ROPE_TILE, 
     def core(lr32: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lr64: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy):
         pack_ext(lr32, lr64)
 
-@df.region()
-def sin_region(i64: Ty_rope[ROPE_TILE, HEAD_DIM], o64: Ty_rope[ROPE_TILE, HEAD_DIM]):
-    @df.kernel(mapping=[1, 2], args=[i64, o64])
-    def core(li: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy, lo: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy):
-        sin_ext(li, lo)
+ROPE_HALF_TILE = ROPE_TILE // 2  # decomposed split/join/elementwise kernels are hardcoded to 32 rows
 
 @df.region()
-def cos_region(i64: Ty_rope[ROPE_TILE, HEAD_DIM], o64: Ty_rope[ROPE_TILE, HEAD_DIM]):
-    @df.kernel(mapping=[1, 2], args=[i64, o64])
-    def core(li: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy, lo: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy):
-        cos_ext(li, lo)
+def sin_cos_region(i64: Ty_rope[ROPE_HALF_TILE, HEAD_DIM], packed_o64: Ty_rope[ROPE_TILE, HEAD_DIM]):
+    @df.kernel(mapping=[1, 1], args=[i64, packed_o64])
+    def core(li: Ty_rope[ROPE_HALF_TILE, HEAD_DIM] @ MatLy,
+             lpo: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy):
+        sin_cos_ext(li, lpo)
 
 @df.region()
-def copy_left_region(i64: Ty_rope[ROPE_TILE, HEAD_DIM], o32: Ty_rope[ROPE_TILE, HEAD_DIM_HALF]):
+def copy_left_region(i64: Ty_rope[ROPE_HALF_TILE, HEAD_DIM], o32: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[i64, o32])
-    def core(li: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy, lo: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy):
+    def core(li: Ty_rope[ROPE_HALF_TILE, HEAD_DIM] @ MatLy, lo: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy):
         copyL_ext(li, lo)
 
 @df.region()
-def copy_right_region(i64: Ty_rope[ROPE_TILE, HEAD_DIM], o32: Ty_rope[ROPE_TILE, HEAD_DIM_HALF]):
+def copy_right_region(i64: Ty_rope[ROPE_HALF_TILE, HEAD_DIM], o32: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[i64, o32])
-    def core(li: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy, lo: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy):
+    def core(li: Ty_rope[ROPE_HALF_TILE, HEAD_DIM] @ MatLy, lo: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy):
         copyR_ext(li, lo)
 
 @df.region()
-def join_region(l32: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], r32: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], o64: Ty_rope[ROPE_TILE, HEAD_DIM]):
-    @df.kernel(mapping=[1, 2], args=[l32, r32, o64])
-    def core(ll: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lr: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lo: Ty_rope[ROPE_TILE, HEAD_DIM] @ MatLy):
+def join_region(l32: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], r32: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], o64: Ty_rope[ROPE_HALF_TILE, HEAD_DIM]):
+    @df.kernel(mapping=[1, 1], args=[l32, r32, o64])
+    def core(ll: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lr: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lo: Ty_rope[ROPE_HALF_TILE, HEAD_DIM] @ MatLy):
         join_ext(ll, lr, lo)
 
 @df.region()
-def mul32_region(A: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], B: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], C: Ty_rope[ROPE_TILE, HEAD_DIM_HALF]):
+def mul32_region(A: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], B: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], C: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[A, B, C])
-    def core(la: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lb: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lc: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy):
+    def core(la: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lb: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lc: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy):
         mul32_ext(la, lb, lc)
 
 @df.region()
-def add32_region(A: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], B: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], C: Ty_rope[ROPE_TILE, HEAD_DIM_HALF]):
+def add32_region(A: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], B: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], C: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[A, B, C])
-    def core(la: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lb: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lc: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy):
+    def core(la: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lb: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lc: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy):
         add32_ext(la, lb, lc)
 
 @df.region()
-def sub32_region(A: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], B: Ty_rope[ROPE_TILE, HEAD_DIM_HALF], C: Ty_rope[ROPE_TILE, HEAD_DIM_HALF]):
+def sub32_region(A: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], B: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF], C: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[A, B, C])
-    def core(la: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lb: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy, lc: Ty_rope[ROPE_TILE, HEAD_DIM_HALF] @ MatLy):
+    def core(la: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lb: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy, lc: Ty_rope[ROPE_HALF_TILE, HEAD_DIM_HALF] @ MatLy):
         sub32_ext(la, lb, lc)
+
+# Fused RoPE: single kernel does split+mul+sub+add+join in one shot.
+# Sin/cos are precomputed on host and packed into sin_cos[32][64].
+rope_fused_ext = ExternalModule(
+    top="rope_fused_float32", impl_path=ROPE_FUSED_IMPL, input_idx=[0, 1], output_idx=[2]
+)
+
+@df.region()
+def rope_fused_region(x: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM],
+                      sin_cos: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM],
+                      out: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM]):
+    @df.kernel(mapping=[1, 1], args=[x, sin_cos, out])
+    def core(lx: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM] @ MatLy,
+             lsc: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM] @ MatLy,
+             lo: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM] @ MatLy):
+        rope_fused_ext(lx, lsc, lo)
 
 
 # ##############################################################
@@ -480,14 +493,14 @@ silu_mod = df.build(silu_kernel, target="aie", project="action_expert_bf16/silu.
 # RoPE modules (shared)
 radians_mod = df.build(radians_region, target="aie", project="action_expert_bf16/rope/radians.prj")
 pack_mod    = df.build(pack_region, target="aie", project="action_expert_bf16/rope/pack.prj")
-sin_mod     = df.build(sin_region, target="aie", project="action_expert_bf16/rope/sin.prj")
-cos_mod     = df.build(cos_region, target="aie", project="action_expert_bf16/rope/cos.prj")
+sin_cos_mod = df.build(sin_cos_region, target="aie", project="action_expert_bf16/rope/sin_cos.prj")
 copyL_mod   = df.build(copy_left_region, target="aie", project="action_expert_bf16/rope/copyL.prj")
 copyR_mod   = df.build(copy_right_region, target="aie", project="action_expert_bf16/rope/copyR.prj")
 join_mod    = df.build(join_region, target="aie", project="action_expert_bf16/rope/join.prj")
 mul32_mod   = df.build(mul32_region, target="aie", project="action_expert_bf16/rope/mul32.prj")
 add32_mod   = df.build(add32_region, target="aie", project="action_expert_bf16/rope/add32.prj")
 sub32_mod   = df.build(sub32_region, target="aie", project="action_expert_bf16/rope/sub32.prj")
+rope_fused_mod = df.build(rope_fused_region, target="aie", project="action_expert_bf16/rope/fused.prj")
 
 # Self-attention specific
 gemm_kv_self_mod = None
@@ -543,59 +556,39 @@ def unmasked_softmax_fn(score_per_head, weight_per_head):
     softmax_cross_mod(score_per_head, weight_per_head)
 
 
+def _precompute_sin_cos(tile_rows, head_dim, max_wavelength, pos_offset):
+    HALF = head_dim // 2
+    k = np.arange(HALF, dtype=np.float32)
+    inv_ts = max_wavelength ** (-(2.0 / head_dim) * k)
+    pos = (pos_offset + np.arange(tile_rows, dtype=np.float32))
+    radians = pos[:, None] * inv_ts[None, :]
+    sin_cos = np.zeros((tile_rows, head_dim), dtype=np.float32)
+    sin_cos[:, :HALF] = np.sin(radians)
+    sin_cos[:, HALF:] = np.cos(radians)
+    return sin_cos
+
+
 def rope_apply_packed(packed_bf16, heads, head_dim=64, max_wavelength=10_000.0, pos_offset=0):
-    """RoPE in float32. Converts bf16→float32, applies RoPE, returns bf16.
-    Pads to ROPE_TILE=64 rows per tile."""
+    """RoPE via single fused NPU kernel (rope_fused_float32). One call per head per 32-row tile.
+    Sin/cos are precomputed on host. bf16 in -> float32 NPU -> bf16 out."""
     packed = packed_bf16.astype(np.float32)
     seq_len, total_dim = packed.shape
     D = head_dim
-    HALF = D // 2
+    tile_rows = ROPE_FUSED_TILE
 
     out = np.empty_like(packed, dtype=np.float32)
-    k = np.arange(HALF, dtype=np.float32)
-    inv_ts = (max_wavelength ** (-(2.0 / D) * k)).astype(np.float32)
 
-    for t0 in range(0, seq_len, ROPE_TILE):
-        rows = min(ROPE_TILE, seq_len - t0)
-        pos32 = (pos_offset + np.arange(t0, t0 + rows, dtype=np.float32)).astype(np.float32)
-        pos_pad = np.zeros(ROPE_TILE, dtype=np.float32)
-        pos_pad[:rows] = pos32
-
-        radians32 = np.zeros((ROPE_TILE, HALF), dtype=np.float32)
-        radians_mod(pos_pad, inv_ts, radians32)
-        radians64 = np.zeros((ROPE_TILE, D), dtype=np.float32)
-        pack_mod(radians32, radians64)
-
-        sin64 = np.zeros((ROPE_TILE, D), dtype=np.float32)
-        cos64 = np.zeros((ROPE_TILE, D), dtype=np.float32)
-        sin_mod(radians64, sin64)
-        cos_mod(radians64, cos64)
+    for t0 in range(0, seq_len, tile_rows):
+        rows = min(tile_rows, seq_len - t0)
+        sin_cos = _precompute_sin_cos(tile_rows, D, max_wavelength, pos_offset + t0)
 
         for h in range(heads):
-            x_tile = np.zeros((ROPE_TILE, D), dtype=np.float32)
+            x_tile = np.zeros((tile_rows, D), dtype=np.float32)
             x_tile[:rows, :] = packed[t0:t0 + rows, h * D:(h + 1) * D]
-
-            xL = np.zeros((ROPE_TILE, HALF), dtype=np.float32)
-            xR = np.zeros((ROPE_TILE, HALF), dtype=np.float32)
-            s  = np.zeros((ROPE_TILE, HALF), dtype=np.float32)
-            c  = np.zeros((ROPE_TILE, HALF), dtype=np.float32)
-
-            copyL_mod(x_tile, xL)
-            copyR_mod(x_tile, xR)
-            copyL_mod(sin64, s)
-            copyL_mod(cos64, c)
-
-            tmp1 = np.zeros_like(xL); mul32_mod(xL, c, tmp1)
-            tmp2 = np.zeros_like(xL); mul32_mod(xR, s, tmp2)
-            yL   = np.zeros_like(xL); sub32_mod(tmp1, tmp2, yL)
-
-            tmp3 = np.zeros_like(xL); mul32_mod(xR, c, tmp3)
-            tmp4 = np.zeros_like(xL); mul32_mod(xL, s, tmp4)
-            yR   = np.zeros_like(xL); add32_mod(tmp3, tmp4, yR)
-
-            y64 = np.zeros((ROPE_TILE, D), dtype=np.float32)
-            join_mod(yL, yR, y64)
-            out[t0:t0 + rows, h * D:(h + 1) * D] = y64[:rows, :]
+            out_tile = np.zeros((tile_rows, D), dtype=np.float32)
+            sc_copy = sin_cos.copy()
+            rope_fused_mod(x_tile, sc_copy, out_tile)
+            out[t0:t0 + rows, h * D:(h + 1) * D] = out_tile[:rows, :]
 
     return out.astype(NP_DTYPE)
 

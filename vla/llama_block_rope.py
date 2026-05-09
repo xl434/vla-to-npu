@@ -325,8 +325,10 @@ def hadamard_kernel(A: Ty[EMBD], B: Ty[EMBD], C: Ty[EMBD]):
 # ----------------------------------------------------------------
 # Rope
 # ----------------------------------------------------------------
-SEQ, HEAD_DIM  = 64, 64
-HEAD_DIM_HALF = HEAD_DIM // 2
+# Keep model SEQ unchanged. RoPE kernels are tiled as 32 x 64 to fit AIE memory.
+ROPE_SEQ_TILE = 64
+ROPE_HEAD_DIM = HEAD_DIM
+HEAD_DIM_HALF = ROPE_HEAD_DIM // 2
 
 # Layouts / dtypes
 Ty = float32
@@ -335,8 +337,7 @@ MatLy = [S(1), S(0)]
 
 # External kernels (ROPE)
 OPS_IMPL = KERNEL_LIB_PATH + "rope_vec_ops.cc"
-SIN_IMPL = KERNEL_LIB_PATH + "sine.cc"
-COS_IMPL = KERNEL_LIB_PATH + "cosine.cc"
+SIN_COS_IMPL = KERNEL_LIB_PATH + "sin_cos.cc"
 
 radians_ext = ExternalModule(
     top="rope_make_radians_float32",
@@ -393,91 +394,90 @@ sub32_ext = ExternalModule(
 
 sin_ext = ExternalModule(
     top="sin_float32",
-    impl_path=SIN_IMPL,
-    input_idx=[0],      # in64
-    output_idx=[1],     # out64
+    impl_path=SIN_COS_IMPL,
+    input_idx=[0],
+    output_idx=[1],
 )
-
 cos_ext = ExternalModule(
     top="cos_float32",
-    impl_path=COS_IMPL,
-    input_idx=[0],      # in64
-    output_idx=[1],     # out64
+    impl_path=SIN_COS_IMPL,
+    input_idx=[0],
+    output_idx=[1],
 )
 
 @df.region()
-def radians_region(positions: Ty[SEQ], inv_ts: Ty[HEAD_DIM_HALF], radians32: Ty[SEQ, HEAD_DIM_HALF]):
+def sin_region(in64: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM], out64: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM]):
+    @df.kernel(mapping=[1, 1], args=[in64, out64])
+    def core(local_in: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM] @ MatLy,
+             local_out: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM] @ MatLy):
+        sin_ext(local_in, local_out)
+
+@df.region()
+def cos_region(in64: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM], out64: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM]):
+    @df.kernel(mapping=[1, 1], args=[in64, out64])
+    def core(local_in: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM] @ MatLy,
+             local_out: Ty[ROPE_SEQ_TILE // 2, ROPE_HEAD_DIM] @ MatLy):
+        cos_ext(local_in, local_out)
+
+@df.region()
+def radians_region(positions: Ty[ROPE_SEQ_TILE], inv_ts: Ty[HEAD_DIM_HALF], radians32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[positions, inv_ts, radians32])
-    def core(local_positions: Ty[SEQ] @ VecLy,
+    def core(local_positions: Ty[ROPE_SEQ_TILE] @ VecLy,
             local_inv_ts:    Ty[HEAD_DIM_HALF] @ VecLy,
-            local_radians32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+            local_radians32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy):
         radians_ext(local_positions, local_inv_ts, local_radians32)
 
 @df.region()
-def pack_region(radians32: Ty[SEQ, HEAD_DIM_HALF], radians64: Ty[SEQ, HEAD_DIM]):
+def pack_region(radians32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], radians64: Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM]):
     @df.kernel(mapping=[1, 1], args=[radians32, radians64])
-    def core(local_radians32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_radians64: Ty[SEQ, HEAD_DIM]      @ MatLy):
+    def core(local_radians32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_radians64: Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM]      @ MatLy):
         pack_ext(local_radians32, local_radians64)
 
 @df.region()
-def sin_region(in64: Ty[SEQ, HEAD_DIM], out64: Ty[SEQ, HEAD_DIM]):
-    @df.kernel(mapping=[1, 2], args=[in64, out64])
-    def core(local_in64:  Ty[SEQ, HEAD_DIM] @ MatLy,
-            local_out64: Ty[SEQ, HEAD_DIM] @ MatLy):
-        sin_ext(local_in64, local_out64)
-
-@df.region()
-def cos_region(in64: Ty[SEQ, HEAD_DIM], out64: Ty[SEQ, HEAD_DIM]):
-    @df.kernel(mapping=[1, 2], args=[in64, out64])
-    def core(local_in64:  Ty[SEQ, HEAD_DIM] @ MatLy,
-            local_out64: Ty[SEQ, HEAD_DIM] @ MatLy):
-        cos_ext(local_in64, local_out64)
-
-@df.region()
-def copy_left_region(in64: Ty[SEQ, HEAD_DIM], out32: Ty[SEQ, HEAD_DIM_HALF]):
+def copy_left_region(in64: Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM], out32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[in64, out32])
-    def core(local_in64:  Ty[SEQ, HEAD_DIM]      @ MatLy,
-            local_out32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+    def core(local_in64:  Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM]      @ MatLy,
+            local_out32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy):
         copyL_ext(local_in64, local_out32)
 
 @df.region()
-def copy_right_region(in64: Ty[SEQ, HEAD_DIM], out32: Ty[SEQ, HEAD_DIM_HALF]):
+def copy_right_region(in64: Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM], out32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[in64, out32])
-    def core(local_in64:  Ty[SEQ, HEAD_DIM]      @ MatLy,
-            local_out32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+    def core(local_in64:  Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM]      @ MatLy,
+            local_out32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy):
         copyR_ext(local_in64, local_out32)
 
 @df.region()
-def join_region(left32: Ty[SEQ, HEAD_DIM_HALF], right32: Ty[SEQ, HEAD_DIM_HALF], out64: Ty[SEQ, HEAD_DIM]):
+def join_region(left32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], right32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], out64: Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM]):
     @df.kernel(mapping=[1, 2], args=[left32, right32, out64])
-    def core(local_left32:  Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_right32: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_out64:   Ty[SEQ, HEAD_DIM]      @ MatLy):
+    def core(local_left32:  Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_right32: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_out64:   Ty[ROPE_SEQ_TILE, ROPE_HEAD_DIM]      @ MatLy):
         join_ext(local_left32, local_right32, local_out64)
 
 @df.region()
-def mul32_region(A: Ty[SEQ, HEAD_DIM_HALF], B: Ty[SEQ, HEAD_DIM_HALF], C: Ty[SEQ, HEAD_DIM_HALF]):
+def mul32_region(A: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], B: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], C: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[A, B, C])
-    def core(local_A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+    def core(local_A: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_B: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_C: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy):
         mul32_ext(local_A, local_B, local_C)
 
 @df.region()
-def add32_region(A: Ty[SEQ, HEAD_DIM_HALF], B: Ty[SEQ, HEAD_DIM_HALF], C: Ty[SEQ, HEAD_DIM_HALF]):
+def add32_region(A: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], B: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], C: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[A, B, C])
-    def core(local_A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+    def core(local_A: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_B: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_C: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy):
         add32_ext(local_A, local_B, local_C)
 
 @df.region()
-def sub32_region(A: Ty[SEQ, HEAD_DIM_HALF], B: Ty[SEQ, HEAD_DIM_HALF], C: Ty[SEQ, HEAD_DIM_HALF]):
+def sub32_region(A: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], B: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF], C: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF]):
     @df.kernel(mapping=[1, 1], args=[A, B, C])
-    def core(local_A: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_B: Ty[SEQ, HEAD_DIM_HALF] @ MatLy,
-            local_C: Ty[SEQ, HEAD_DIM_HALF] @ MatLy):
+    def core(local_A: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_B: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy,
+            local_C: Ty[ROPE_SEQ_TILE, HEAD_DIM_HALF] @ MatLy):
         sub32_ext(local_A, local_B, local_C)
 
 # ##############################################################
@@ -503,8 +503,6 @@ hadamard_mod = df.build(
 
 radians_mod = df.build(radians_region, target="aie", project="rope/radians.prj")
 pack_mod    = df.build(pack_region,    target="aie", project="rope/pack.prj")
-sin_mod     = df.build(sin_region,     target="aie", project="rope/sin.prj")
-cos_mod     = df.build(cos_region,     target="aie", project="rope/cos.prj")
 copyL_mod   = df.build(copy_left_region,  target="aie", project="rope/copyL.prj")
 copyR_mod   = df.build(copy_right_region, target="aie", project="rope/copyR.prj")
 join_mod    = df.build(join_region,    target="aie", project="rope/join.prj")
@@ -616,14 +614,13 @@ def rope_apply_packed(
     max_wavelength: float = 10_000.0,
     pos_offset: int = 0,
 ) -> np.ndarray:
-    
     seq_len, total_dim = packed.shape
     assert total_dim == heads * head_dim, "packed width must be heads*head_dim"
-    # Current AIE kernels are compiled for 32-row tiles and head_dim=64
-    tile_rows = SEQ
+    # sin/cos kernels process 32-row sub-tiles (ROPE_SEQ_TILE // 2 = 32)
+    tile_rows = ROPE_SEQ_TILE
     D = head_dim
     HALF = D // 2
-    assert D == 64 and HALF * 2 == D
+    assert D == ROPE_HEAD_DIM and HALF * 2 == D
 
     out = np.empty_like(packed, dtype=np.float32)
 
@@ -633,30 +630,25 @@ def rope_apply_packed(
     for t0 in range(0, seq_len, tile_rows):
         rows = min(tile_rows, seq_len - t0)
 
-        # positions for this tile (pad to 32 rows)
-        pos32 = (pos_offset + np.arange(t0, t0 + rows, dtype=np.float32)).astype(np.float32)
+        # params[0:HALF] = positions (zero-padded), params[HALF:D] = inv_timescale
+        # Build packed radians: shape [tile_rows, D]
         pos_pad = np.zeros(tile_rows, dtype=np.float32)
-        pos_pad[:rows] = pos32
+        pos_pad[:rows] = pos_offset + np.arange(t0, t0 + rows, dtype=np.float32)
+        radians32 = (pos_pad[:, None] * inv_ts[None, :]).astype(np.float32)
+        radians64 = np.empty((tile_rows, D), dtype=np.float32)
+        radians64[:, :HALF] = radians32
+        radians64[:, HALF:] = radians32
 
-        # radians32 = pos_pad[:,None] * inv_ts[None,:]  (via external kernel)
-        radians32 = np.zeros((tile_rows, HALF), dtype=np.float32)
-        radians_mod(pos_pad, inv_ts, radians32)
-
-        # pack to 32x64 and get LUT sin/cos
-        radians64 = np.zeros((tile_rows, D), dtype=np.float32)
-        pack_mod(radians32, radians64)
-
-        sin64 = np.zeros((tile_rows, D), dtype=np.float32)
-        cos64 = np.zeros((tile_rows, D), dtype=np.float32)
-        sin_mod(radians64, sin64)
-        cos_mod(radians64, cos64)
+        # sin/cos computed on CPU (combined AIE kernel has codegen issues with
+        # 2-output ExternalModules; separate kernels have an Allo identical-shape bug)
+        sin64 = np.sin(radians64).astype(np.float32)
+        cos64 = np.cos(radians64).astype(np.float32)
 
         # rotate each head using same sin/cos tile
         for h in range(heads):
             x_tile = np.zeros((tile_rows, D), dtype=np.float32)
-            x_tile[:rows, :] = packed[t0:t0 + rows, h*D:(h+1)*D]
+            x_tile[:rows, :] = packed[t0:t0 + rows, h * D:(h + 1) * D]
 
-            # split x and (sin,cos) into halves, compute, then join
             xL = np.zeros((tile_rows, HALF), dtype=np.float32)
             xR = np.zeros((tile_rows, HALF), dtype=np.float32)
             s  = np.zeros((tile_rows, HALF), dtype=np.float32)
@@ -664,21 +656,21 @@ def rope_apply_packed(
 
             copyL_mod(x_tile, xL)
             copyR_mod(x_tile, xR)
-            copyL_mod(sin64, s)    # only first 32 cols needed
+            copyL_mod(sin64, s)
             copyL_mod(cos64, c)
 
-            tmp1 = np.zeros_like(xL);  mul32_mod(xL, c, tmp1)   # xL*c
-            tmp2 = np.zeros_like(xL);  mul32_mod(xR, s, tmp2)   # xR*s
-            yL   = np.zeros_like(xL);  sub32_mod(tmp1, tmp2, yL)# yL = xL*c - xR*s
+            tmp1 = np.zeros_like(xL); mul32_mod(xL, c, tmp1)
+            tmp2 = np.zeros_like(xL); mul32_mod(xR, s, tmp2)
+            yL   = np.zeros_like(xL); sub32_mod(tmp1, tmp2, yL)
 
-            tmp3 = np.zeros_like(xL);  mul32_mod(xR, c, tmp3)   # xR*c
-            tmp4 = np.zeros_like(xL);  mul32_mod(xL, s, tmp4)   # xL*s
-            yR   = np.zeros_like(xL);  add32_mod(tmp3, tmp4, yR)# yR = xR*c + xL*s
+            tmp3 = np.zeros_like(xL); mul32_mod(xR, c, tmp3)
+            tmp4 = np.zeros_like(xL); mul32_mod(xL, s, tmp4)
+            yR   = np.zeros_like(xL); add32_mod(tmp3, tmp4, yR)
 
             y64 = np.zeros((tile_rows, D), dtype=np.float32)
             join_mod(yL, yR, y64)
 
-            out[t0:t0 + rows, h*D:(h+1)*D] = y64[:rows, :]
+            out[t0:t0 + rows, h * D:(h + 1) * D] = y64[:rows, :]
     return out
 
 def llama_block_rope(x_fp32: np.ndarray, params: dict):
@@ -690,16 +682,19 @@ def llama_block_rope(x_fp32: np.ndarray, params: dict):
     x = np.empty((SEQ, EMBD), dtype=np.float32)
     rmsnorm(residual, params["W_norm_1"], x)
 
+    print(f"[DEBUG] after rmsnorm1: x nan={np.isnan(x).any()} range=[{x.min():.3f},{x.max():.3f}]")
     query = np.zeros((SEQ, Q_H * HEAD_DIM)).astype(np.float32)     ## need rope
     key = np.zeros((SEQ, KV_H * HEAD_DIM)).astype(np.float32)      ## need rope
     value = np.zeros((SEQ, KV_H * HEAD_DIM)).astype(np.float32)
     linear_projection(x, params["Wq"], query, SEQ, Q_H * HEAD_DIM, EMBD)
     linear_projection(x, params["Wk"], key, SEQ, KV_H * HEAD_DIM, EMBD)
     linear_projection(x, params["Wv"], value, SEQ, KV_H * HEAD_DIM, EMBD)
+    print(f"[DEBUG] after proj: q nan={np.isnan(query).any()} k nan={np.isnan(key).any()} v nan={np.isnan(value).any()}")
 
     query = rope_apply_packed(query, heads=Q_H, head_dim=HEAD_DIM)
     key   = rope_apply_packed(key,   heads=KV_H, head_dim=HEAD_DIM)
-
+    print(f"[DEBUG] query nan={np.isnan(query).any()} inf={np.isinf(query).any()} range=[{query.min():.3f},{query.max():.3f}]")
+    print(f"[DEBUG] key   nan={np.isnan(key).any()} inf={np.isinf(key).any()} range=[{key.min():.3f},{key.max():.3f}]")
 
     # attention score
     attention_score = np.empty((SEQ, Q_H, SEQ), dtype=np.float32)
@@ -723,10 +718,12 @@ def llama_block_rope(x_fp32: np.ndarray, params: dict):
                     ],
                 )
 
+    print(f"[DEBUG] attn_score nan={np.isnan(attention_score).any()} range=[{attention_score.min():.3f},{attention_score.max():.3f}]")
     # safe softmax
     if USE_ALL_NPU_KERNELS:
         attn_weight = np.zeros((SEQ, Q_H * SEQ)).astype(np.float32)
         masked_softmax(attention_score, attn_weight)
+        print(f"[DEBUG] attn_weight(NPU) nan={np.isnan(attn_weight).any()} range=[{attn_weight.min():.6f},{attn_weight.max():.6f}]")
     else:
         mask = torch.triu(torch.ones(SEQ, SEQ), 1).bool()
         mask = np.repeat(mask[:, np.newaxis, :], Q_H, axis=1)
@@ -751,28 +748,44 @@ def llama_block_rope(x_fp32: np.ndarray, params: dict):
             HEAD_DIM,
             SEQ,
         )
+    print(f"[DEBUG] attn_value nan={np.isnan(attn_value).any()} range=[{attn_value.min():.3f},{attn_value.max():.3f}]")
     # output projection
     x = np.zeros((SEQ, EMBD)).astype(np.float32)
     linear_projection(attn_value, params["Wo"], x, SEQ, EMBD, Q_H * HEAD_DIM)
+    print(f"[DEBUG] out_proj nan={np.isnan(x).any()} range=[{x.min():.3f},{x.max():.3f}]")
     # add residual
     add_residual(residual, x, SEQ, EMBD)
+    print(f"[DEBUG] after residual1 nan={np.isnan(residual).any()} range=[{residual.min():.3f},{residual.max():.3f}]")
     # norm
     rmsnorm(residual, params["W_norm_2"], x)
+    print(f"[DEBUG] after rmsnorm2 nan={np.isnan(x).any()} range=[{x.min():.3f},{x.max():.3f}]")
     # up projection
     up_proj_x = np.zeros((SEQ, FFN_HID)).astype(np.float32)
     linear_projection(x, params["W_up"], up_proj_x, SEQ, FFN_HID, EMBD)
     # gate projection
     gate_proj_x = np.zeros((SEQ, FFN_HID)).astype(np.float32)
     linear_projection(x, params["W_gate"], gate_proj_x, SEQ, FFN_HID, EMBD)
+    print(f"[DEBUG] up_proj nan={np.isnan(up_proj_x).any()} range=[{up_proj_x.min():.3f},{up_proj_x.max():.3f}]")
+    print(f"[DEBUG] gate_proj nan={np.isnan(gate_proj_x).any()} range=[{gate_proj_x.min():.3f},{gate_proj_x.max():.3f}]")
 
     if USE_ALL_NPU_KERNELS:
         activeated_x = np.zeros((SEQ, FFN_HID)).astype(np.float32)
         for i in range(SEQ // GELU_SEQ_TILE):
-            silu_mod(
-                gate_proj_x[i * GELU_SEQ_TILE : (i + 1) * GELU_SEQ_TILE, :],
-                activeated_x[i * GELU_SEQ_TILE : (i + 1) * GELU_SEQ_TILE, :],
-            )
+            tile_in = gate_proj_x[i * GELU_SEQ_TILE : (i + 1) * GELU_SEQ_TILE, :]
+            tile_out = activeated_x[i * GELU_SEQ_TILE : (i + 1) * GELU_SEQ_TILE, :]
+            silu_mod(tile_in, tile_out)
+            if np.isnan(tile_out).any():
+                nan_locs = np.argwhere(np.isnan(tile_out))
+                print(f"[DEBUG] silu tile {i}: nan_count={np.isnan(tile_out).sum()} input_range=[{tile_in.min():.3f},{tile_in.max():.3f}]")
+                print(f"[DEBUG]   first nan at row,col={nan_locs[0]}")
+                r0, c0 = nan_locs[0]
+                print(f"[DEBUG]   input[{r0},{c0}]={tile_in[r0,c0]:.6f}  expected_silu={tile_in[r0,c0]*1/(1+np.exp(-tile_in[r0,c0])):.6f}")
+                print(f"[DEBUG]   non-nan range: [{tile_out[~np.isnan(tile_out)].min():.3f},{tile_out[~np.isnan(tile_out)].max():.3f}]")
+                print(f"[DEBUG]   nan columns (first 10): {np.unique(nan_locs[:,1])[:10]}")
+                break
+        print(f"[DEBUG] after silu nan={np.isnan(activeated_x).any()} range=[{activeated_x[~np.isnan(activeated_x)].min() if not np.all(np.isnan(activeated_x)) else 'all_nan'},{activeated_x[~np.isnan(activeated_x)].max() if not np.all(np.isnan(activeated_x)) else 'all_nan'}]")
         rowwise_hadamard(activeated_x, up_proj_x, activeated_x)
+        print(f"[DEBUG] after hadamard nan={np.isnan(activeated_x).any()}")
     else:
         tensor_gate_proj_x = torch.from_numpy(gate_proj_x)
         tensor_up_proj_x = torch.from_numpy(up_proj_x)
@@ -784,7 +797,9 @@ def llama_block_rope(x_fp32: np.ndarray, params: dict):
     print("W_gate", params["W_gate"].shape)
     print("gate_proj_x", gate_proj_x.shape)
     linear_projection(activeated_x, params["W_down"], x, SEQ, EMBD, FFN_HID)
+    print(f"[DEBUG] after down_proj nan={np.isnan(x).any()} range=[{x.min():.3f},{x.max():.3f}]")
     add_residual(residual, x, SEQ, EMBD)
+    print(f"[DEBUG] final residual nan={np.isnan(residual).any()} range=[{residual.min():.3f},{residual.max():.3f}]")
     return residual
 
 def llama_block_rope_cross(
