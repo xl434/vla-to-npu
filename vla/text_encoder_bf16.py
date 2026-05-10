@@ -523,7 +523,11 @@ def text_encoder_forward(x_np, params):
     # Output projection + residual
     x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
     gemm_out_mod(attn_value, params["Wo"], x)
-    residual += x
+    residual += x  # residual is now the post-attention output
+
+    # Snapshot post-attention residual; K/V for cross-attention are derived
+    # from LN_1(post-attention) at the end of the layer (matches reference).
+    post_attn = residual.copy()
 
     # RMSNorm 2
     rmsnorm(residual, params["W_norm_2"], x)
@@ -585,8 +589,16 @@ def text_encoder_forward(x_np, params):
 
     residual += x
 
-    # Return output + key/value for cross-attention
-    return residual, key, value
+    # K/V exported for cross-attention: pre-RoPE, from LN_1(post-attn snapshot).
+    # Computed on CPU to avoid disturbing AIE pipeline state.
+    pa_f32 = post_attn.astype(np.float32)
+    w_norm_f32 = params["W_norm_1"].astype(np.float32)
+    rms = np.sqrt((pa_f32 ** 2).mean(axis=-1, keepdims=True) + 1e-6)
+    cross_norm = ((pa_f32 / rms) * w_norm_f32).astype(NP_DTYPE)
+    key_out = (cross_norm.astype(np.float32) @ params["Wk"].astype(np.float32)).astype(NP_DTYPE)
+    value_out = (cross_norm.astype(np.float32) @ params["Wv"].astype(np.float32)).astype(NP_DTYPE)
+
+    return residual, key_out, value_out
 
 
 if __name__ == "__main__":
@@ -625,3 +637,13 @@ if __name__ == "__main__":
         allo_out.astype(np.float32), ref_out, atol=1e-1, rtol=1e-1
     )
     print("Text encoder bf16 matches PyTorch bf16 reference within tolerance")
+
+    ref_k = k_ref.float().numpy()
+    ref_v = v_ref.float().numpy()
+    np.testing.assert_allclose(
+        allo_key.astype(np.float32), ref_k, atol=1e-1, rtol=1e-1
+    )
+    np.testing.assert_allclose(
+        allo_value.astype(np.float32), ref_v, atol=1e-1, rtol=1e-1
+    )
+    print("Returned K/V match reference within tolerance")

@@ -779,7 +779,6 @@ def action_expert_cross_forward(x_np, text_k_np, text_v_np, params):
         gemm_attn_cross_value_mod(weight, V_head, head_out)
         attn_value[:, h * HEAD_DIM : (h + 1) * HEAD_DIM] = head_out
 
-
     # Output projection + residual
     x = np.zeros((SEQ, EMBD), dtype=NP_DTYPE)
     gemm_out_mod(attn_value, params["Wo"], x)
