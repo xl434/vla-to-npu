@@ -327,8 +327,7 @@ HEAD_DIM_HALF = HEAD_DIM // 2
 VecLy = [S(0)]
 MatLy = [S(1), S(0)]
 OPS_IMPL = KERNEL_LIB_PATH + "rope_vec_ops.cc"
-SIN_IMPL = KERNEL_LIB_PATH + "sine.cc"
-COS_IMPL = KERNEL_LIB_PATH + "cosine.cc"
+SIN_COS_IMPL = KERNEL_LIB_PATH + "sin_cos.cc"
 
 radians_ext = ExternalModule(top="rope_make_radians_float32", impl_path=OPS_IMPL, input_idx=[0, 1], output_idx=[2])
 pack_ext = ExternalModule(top="pack32to64_float32", impl_path=OPS_IMPL, input_idx=[0], output_idx=[1])
@@ -338,8 +337,7 @@ join_ext = ExternalModule(top="join32_to_64_float32", impl_path=OPS_IMPL, input_
 mul32_ext = ExternalModule(top="mul32_float32", impl_path=OPS_IMPL, input_idx=[0, 1], output_idx=[2])
 add32_ext = ExternalModule(top="add32_float32", impl_path=OPS_IMPL, input_idx=[0, 1], output_idx=[2])
 sub32_ext = ExternalModule(top="sub32_float32", impl_path=OPS_IMPL, input_idx=[0, 1], output_idx=[2])
-sin_ext = ExternalModule(top="sin_float32", impl_path=SIN_IMPL, input_idx=[0], output_idx=[1])
-cos_ext = ExternalModule(top="cos_float32", impl_path=COS_IMPL, input_idx=[0], output_idx=[1])
+sin_cos_ext = ExternalModule(top="sin_cos_float32", impl_path=SIN_COS_IMPL, input_idx=[0], output_idx=[1, 2])
 
 Ty_rope = float32  # RoPE stays float32
 
@@ -356,16 +354,12 @@ def pack_region(r32: Ty_rope[SEQ, HEAD_DIM_HALF], r64: Ty_rope[SEQ, HEAD_DIM]):
         pack_ext(lr32, lr64)
 
 @df.region()
-def sin_region(i64: Ty_rope[SEQ, HEAD_DIM], o64: Ty_rope[SEQ, HEAD_DIM]):
-    @df.kernel(mapping=[1, 2], args=[i64, o64])
-    def core(li: Ty_rope[SEQ, HEAD_DIM] @ MatLy, lo: Ty_rope[SEQ, HEAD_DIM] @ MatLy):
-        sin_ext(li, lo)
-
-@df.region()
-def cos_region(i64: Ty_rope[SEQ, HEAD_DIM], o64: Ty_rope[SEQ, HEAD_DIM]):
-    @df.kernel(mapping=[1, 2], args=[i64, o64])
-    def core(li: Ty_rope[SEQ, HEAD_DIM] @ MatLy, lo: Ty_rope[SEQ, HEAD_DIM] @ MatLy):
-        cos_ext(li, lo)
+def sin_cos_region(i64: Ty_rope[SEQ, HEAD_DIM], sin_o64: Ty_rope[SEQ, HEAD_DIM], cos_o64: Ty_rope[SEQ, HEAD_DIM]):
+    @df.kernel(mapping=[1, 1], args=[i64, sin_o64, cos_o64])
+    def core(li: Ty_rope[SEQ, HEAD_DIM] @ MatLy,
+             lso: Ty_rope[SEQ, HEAD_DIM] @ MatLy,
+             lco: Ty_rope[SEQ, HEAD_DIM] @ MatLy):
+        sin_cos_ext(li, lso, lco)
 
 @df.region()
 def copy_left_region(i64: Ty_rope[SEQ, HEAD_DIM], o32: Ty_rope[SEQ, HEAD_DIM_HALF]):
@@ -423,8 +417,7 @@ silu_mod = df.build(silu_kernel, target="aie", project="llama_bf16/silu.prj")
 
 radians_mod = df.build(radians_region, target="aie", project="llama_bf16/rope/radians.prj")
 pack_mod = df.build(pack_region, target="aie", project="llama_bf16/rope/pack.prj")
-sin_mod = df.build(sin_region, target="aie", project="llama_bf16/rope/sin.prj")
-cos_mod = df.build(cos_region, target="aie", project="llama_bf16/rope/cos.prj")
+sin_cos_mod = df.build(sin_cos_region, target="aie", project="llama_bf16/rope/sin_cos.prj")
 copyL_mod = df.build(copy_left_region, target="aie", project="llama_bf16/rope/copyL.prj")
 copyR_mod = df.build(copy_right_region, target="aie", project="llama_bf16/rope/copyR.prj")
 join_mod = df.build(join_region, target="aie", project="llama_bf16/rope/join.prj")
@@ -484,8 +477,7 @@ def rope_apply_packed(packed_bf16, heads, head_dim=64, max_wavelength=10_000.0, 
 
         sin64 = np.zeros((tile_rows, D), dtype=np.float32)
         cos64 = np.zeros((tile_rows, D), dtype=np.float32)
-        sin_mod(radians64, sin64)
-        cos_mod(radians64, cos64)
+        sin_cos_mod(radians64, sin64, cos64)
 
         for h in range(heads):
             x_tile = np.zeros((tile_rows, D), dtype=np.float32)

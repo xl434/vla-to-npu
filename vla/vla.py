@@ -35,8 +35,8 @@ Designed by Hugging Face.
 └──────────────────────────────┘
 """
 
-from preprocessing_bf16 import (
-    CHANNELS as CH, PIX_LEN as PIX, KERNEL_DIM, EMBD_DIM as EMBD_P,
+from preprocessing_fused_bf16 import (
+    CHANNELS as CH, PIX_LEN as PIX, KERNEL_H as KERNEL_DIM, EMBD_DIM as EMBD_P,
     preprocessing_block
 )
 
@@ -201,13 +201,11 @@ def joint_transformer(num_layers, vlm_input: np.ndarray, action: np.ndarray,
     exp_cross_params: action expert cross-attention params (has Wk_cross, Wv_cross)
     """
     for i in range(num_layers):
+        vlm_output, text_k, text_v = text_encoder_forward(vlm_input, vlm_params)
+        vlm_input = vlm_output
         if i % SKIP == 0:
-            vlm_output, text_k, text_v = text_encoder_forward(vlm_input, vlm_params)
-            vlm_input = vlm_output
             action = action_expert_self_forward(action, exp_self_params)
         else:
-            vlm_output, text_k, text_v = text_encoder_forward(vlm_input, vlm_params)
-            vlm_input = vlm_output
             action = action_expert_cross_forward(action, text_k, text_v, exp_cross_params)
     return action
 
@@ -230,15 +228,20 @@ def main():
     torch.manual_seed(0)
     np.random.seed(0)
 
-    # Xavier-style scaling: 1/sqrt(fan_in) prevents accumulation blowup in bf16
-    # Without this, connector's 192-tile GEMM (K=12288) produces values in 1000s range,
-    # causing SiLU overflow and NaN cascades in subsequent layers.
+    # GEMM weights use Xavier-style init: variance = 1/fan_in. Without this,
+    # activations through the 2-layer joint transformer overflow bf16 (and
+    # the LUT-based softmax) and produce NaN. The standalone tests pass
+    # because they pull weights from nn.Linear defaults, which apply this
+    # scaling implicitly. Norm weights default to 1 / biases to 0, matching
+    # nn.RMSNorm and nn.LayerNorm defaults.
     def rand_mat(m, n): return (rng.standard_normal((m, n)) / np.sqrt(m)).astype(np_bfloat16)
-    def rand_vec(n):    return rng.standard_normal((n,)).astype(np_bfloat16)
+    def ones_vec(n):    return np.ones((n,), dtype=np_bfloat16)
+    def zeros_vec(n):   return np.zeros((n,), dtype=np_bfloat16)
 
     # --- Preprocessing params ---
     params_proc = dict(
-        kernel=(rng.standard_normal((EMBD_P, CH, KERNEL_DIM, KERNEL_DIM)) / np.sqrt(CH * KERNEL_DIM * KERNEL_DIM)).astype(np_bfloat16)
+        kernel=(rng.standard_normal((EMBD_P, CH, KERNEL_DIM, KERNEL_DIM))
+                / np.sqrt(CH * KERNEL_DIM * KERNEL_DIM)).astype(np_bfloat16)
     )
 
     # --- Connector params ---
@@ -251,8 +254,8 @@ def main():
         Wq=rand_mat(EMBD_V, EMBD_V), Wk=rand_mat(EMBD_V, EMBD_V), Wv=rand_mat(EMBD_V, EMBD_V),
         Wo=rand_mat(EMBD_V, EMBD_V),
         W_up=rand_mat(EMBD_V, 4*EMBD_V), W_down=rand_mat(4*EMBD_V, EMBD_V),
-        W_norm_1=rand_vec(EMBD_V), b_norm_1=rand_vec(EMBD_V),
-        W_norm_2=rand_vec(EMBD_V), b_norm_2=rand_vec(EMBD_V),
+        W_norm_1=ones_vec(EMBD_V), b_norm_1=zeros_vec(EMBD_V),
+        W_norm_2=ones_vec(EMBD_V), b_norm_2=zeros_vec(EMBD_V),
     )
 
     # --- Text Encoder (VLM) layer params: EMBD=960, FFN=2560 ---
@@ -264,8 +267,8 @@ def main():
         W_gate=rand_mat(EMBD_TEXT, TEXT_FFN_HID),                # [960, 2560]
         W_up=rand_mat(EMBD_TEXT, TEXT_FFN_HID),                  # [960, 2560]
         W_down=rand_mat(TEXT_FFN_HID, EMBD_TEXT),                # [2560, 960]
-        W_norm_1=rand_vec(EMBD_TEXT),                            # [960]
-        W_norm_2=rand_vec(EMBD_TEXT),                            # [960]
+        W_norm_1=ones_vec(EMBD_TEXT),                            # [960]
+        W_norm_2=ones_vec(EMBD_TEXT),                            # [960]
     )
 
     # --- Action Expert self-attention params: EMBD=768, FFN=2048 ---
@@ -277,8 +280,8 @@ def main():
         W_gate=rand_mat(EMBD_EXP, EXP_FFN_HID),                # [768, 2048]
         W_up=rand_mat(EMBD_EXP, EXP_FFN_HID),                  # [768, 2048]
         W_down=rand_mat(EXP_FFN_HID, EMBD_EXP),                # [2048, 768]
-        W_norm_1=rand_vec(EMBD_EXP),                            # [768]
-        W_norm_2=rand_vec(EMBD_EXP),                            # [768]
+        W_norm_1=ones_vec(EMBD_EXP),                            # [768]
+        W_norm_2=ones_vec(EMBD_EXP),                            # [768]
     )
 
     # --- Action Expert cross-attention params: same as self + cross K/V projections ---
@@ -290,13 +293,13 @@ def main():
         W_gate=rand_mat(EMBD_EXP, EXP_FFN_HID),                # [768, 2048]
         W_up=rand_mat(EMBD_EXP, EXP_FFN_HID),                  # [768, 2048]
         W_down=rand_mat(EXP_FFN_HID, EMBD_EXP),                # [2048, 768]
-        W_norm_1=rand_vec(EMBD_EXP),                            # [768]
-        W_norm_2=rand_vec(EMBD_EXP),                            # [768]
+        W_norm_1=ones_vec(EMBD_EXP),                            # [768]
+        W_norm_2=ones_vec(EMBD_EXP),                            # [768]
     )
 
     # --- Postprocessing params ---
     params_out = dict(
-        W_exp_norm=rand_vec(EMBD_EXP),                          # [768]
+        W_exp_norm=ones_vec(EMBD_EXP),                          # [768]
         W_action_out=rand_mat(EMBD_EXP, MAX_STATE_DIM),         # [768, 32]
     )
 

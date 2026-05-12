@@ -30,19 +30,19 @@ void pack32to64_float32(float in_mat[64][32], float out_mat[64][64]) {
   }
 }
 
-// copy left 32 cols of a 64x64 into 64x32
-void copy_left32_from64_float32(float in64[64][64], float out32[64][32]) {
+// copy left 32 cols of a 32x64 into 32x32
+void copy_left32_from64_float32(float in64[32][64], float out32[32][32]) {
   constexpr int V = 32;
-  for (int r = 0; r < 64; ++r) {
+  for (int r = 0; r < 32; ++r) {
     aie::vector<float, V> vL = aie::load_v<V>(&in64[r][0]);
     aie::store_v(&out32[r][0], vL);
   }
 }
 
-// copy right 32 cols of a 64x64 into 64x32
-void copy_right32_from64_float32(float in64[64][64], float out32[64][32]) {
+// copy right 32 cols of a 32x64 into 32x32
+void copy_right32_from64_float32(float in64[32][64], float out32[32][32]) {
   constexpr int V = 32;
-  for (int r = 0; r < 64; ++r) {
+  for (int r = 0; r < 32; ++r) {
     aie::vector<float, V> vR = aie::load_v<V>(&in64[r][V]);
     aie::store_v(&out32[r][0], vR);
   }
@@ -61,10 +61,10 @@ void join32_to_64_float32(float left32[32][32],
   }
 }
 
-// elementwise: C = A * B   (all 64x32)
-void mul32_float32(float A[64][32], float B[64][32], float C[64][32]) {
+// elementwise: C = A * B   (all 32x32)
+void mul32_float32(float A[32][32], float B[32][32], float C[32][32]) {
   constexpr int V = 32;
-  for (int r = 0; r < 64; ++r) {
+  for (int r = 0; r < 32; ++r) {
     aie::vector<float, V> vA = aie::load_v<V>(&A[r][0]);
     aie::vector<float, V> vB = aie::load_v<V>(&B[r][0]);
     aie::vector<float, V> vC = aie::mul(vA, vB);
@@ -73,9 +73,9 @@ void mul32_float32(float A[64][32], float B[64][32], float C[64][32]) {
 }
 
 // elementwise: C = A + B
-void add32_float32(float A[64][32], float B[64][32], float C[64][32]) {
+void add32_float32(float A[32][32], float B[32][32], float C[32][32]) {
   constexpr int V = 32;
-  for (int r = 0; r < 64; ++r) {
+  for (int r = 0; r < 32; ++r) {
     aie::vector<float, V> vA = aie::load_v<V>(&A[r][0]);
     aie::vector<float, V> vB = aie::load_v<V>(&B[r][0]);
     aie::vector<float, V> vC = aie::add(vA, vB);
@@ -84,9 +84,9 @@ void add32_float32(float A[64][32], float B[64][32], float C[64][32]) {
 }
 
 // elementwise: C = A - B
-void sub32_float32(float A[64][32], float B[64][32], float C[64][32]) {
+void sub32_float32(float A[32][32], float B[32][32], float C[32][32]) {
   constexpr int V = 32;
-  for (int r = 0; r < 64; ++r) {
+  for (int r = 0; r < 32; ++r) {
     aie::vector<float, V> vA = aie::load_v<V>(&A[r][0]);
     aie::vector<float, V> vB = aie::load_v<V>(&B[r][0]);
     aie::vector<float, V> vC = aie::sub(vA, vB);
