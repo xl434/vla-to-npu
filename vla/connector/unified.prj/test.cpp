@@ -8,7 +8,7 @@
 //   C = A_ @ W           (float32 matmul, [64,12288] × [12288,960] → [64,960])
 //
 // Usage:
-//   ./test --xclbin_copy <path> --instr_copy <path>
+//   ./test --xclbin_pixel_shuffle <path> --instr_pixel_shuffle <path>
 //          --xclbin_gemm <path> --instr_gemm <path>
 //          [--input_A <path>]     (binary bf16 [1024,768], generated randomly if omitted)
 //          [--input_W <path>]     (binary bf16 [12288,960], generated randomly if omitted)
@@ -40,8 +40,8 @@ static po::variables_map parse_args(int argc, const char *argv[]) {
     po::options_description opts("Allowed options");
     opts.add_options()
         ("help,h",         "produce help message")
-        ("xclbin_copy",    po::value<std::string>()->required(), "xclbin for copy (pixel-shuffle) kernel")
-        ("instr_copy",     po::value<std::string>()->required(), "instruction binary for copy kernel")
+        ("xclbin_pixel_shuffle", po::value<std::string>()->required(), "xclbin for pixel-shuffle kernel (OPT-B)")
+        ("instr_pixel_shuffle",  po::value<std::string>()->required(), "instruction binary for pixel-shuffle kernel")
         ("xclbin_gemm",    po::value<std::string>()->required(), "xclbin for gemm kernel")
         ("instr_gemm",     po::value<std::string>()->required(), "instruction binary for gemm kernel")
         ("input_A",        po::value<std::string>()->default_value(""),
@@ -176,7 +176,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Initialising Connector...\n";
     Connector conn(
         /*device_index=*/ 0,
-        vm["xclbin_copy"].as<std::string>(), vm["instr_copy"].as<std::string>(),
+        vm["xclbin_pixel_shuffle"].as<std::string>(), vm["instr_pixel_shuffle"].as<std::string>(),
         vm["xclbin_gemm"].as<std::string>(), vm["instr_gemm"].as<std::string>(),
         trace_sz, verbosity);
     std::cout << "Connector ready.\n";
