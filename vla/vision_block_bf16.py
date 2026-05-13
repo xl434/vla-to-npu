@@ -92,9 +92,12 @@ norm = ExternalModule(
     input_idx=[0, 1],
     output_idx=[2],
 )
-NORM_P0 = 4
-NORM_SEQ_TILE = 16
-NORM_TILE = NORM_SEQ_TILE // NORM_P0
+# NORM_P0=8: doubles cores (8 × 4-row tile = 32 rows/call), same [4,768] per-core SRAM.
+# norm_no_bias (8 cores) + norm_add_bias (8 cores) = 16 total — fits NPU.
+# Halves dispatch count: 1024/32 = 32 calls/norm × 2 = 64 calls (was 128).
+NORM_P0 = 8
+NORM_SEQ_TILE = 32
+NORM_TILE = NORM_SEQ_TILE // NORM_P0  # 4 — unchanged per-core tile
 norm_io_layout = [S(0), R]
 norm_arg_layout = [R]
 
@@ -181,7 +184,9 @@ softmax_ext = ExternalModule(
 )
 SOFTMAX_PHYS_COLS = 512
 SOFTMAX_PHYS_ROWS_PER_LOGICAL = SEQ // SOFTMAX_PHYS_COLS
-SOFTMAX_NUM_CORES = 4
+# SOFTMAX_NUM_CORES=16: uses all NPU cores (16 × 4-row tile = 64 phys rows/call), same
+# [4,512] float32 per-core SRAM. Halves batches again: 1024/32=32 × 12 = 384 calls.
+SOFTMAX_NUM_CORES = 16
 SOFTMAX_KERNEL_PHYS_ROWS = 4
 SOFTMAX_BATCH_PHYS_ROWS = SOFTMAX_NUM_CORES * SOFTMAX_KERNEL_PHYS_ROWS
 SOFTMAX_BATCH_LOGICAL_ROWS = SOFTMAX_BATCH_PHYS_ROWS // SOFTMAX_PHYS_ROWS_PER_LOGICAL
@@ -204,14 +209,16 @@ def softmax_kernel(
 # GELU (bf16)
 # ----------------------------------------------------------------
 gelu_ext = ExternalModule(
-    top="gelu_bf16",
+    top="gelu_bf16_r8",
     impl_path=KERNEL_BF16_PATH + "gelu_bf16.cc",
     input_idx=[0],
     output_idx=[1],
 )
 GELU_P0 = 4
 GELU_P1 = 4
-GELU_SEQ_TILE = 16
+# r8 kernel processes [8,768] per core → SEQ_TILE=32 (vs 16), halves GELU calls: 32 (was 64).
+# SRAM: 8×768×2 = 12 KB per buffer, double-buffered ≈ 48 KB + ~5 KB program < 64 KB ✓
+GELU_SEQ_TILE = 32
 GELU_Ly = [S(0), S(1)]
 
 @df.region()

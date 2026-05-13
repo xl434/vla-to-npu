@@ -148,8 +148,8 @@ norm = ExternalModule(
     input_idx=[0, 1],
     output_idx=[2],
 )
-NORM_P0 = 4
-NORM_SEQ_TILE = 16
+NORM_P0 = 8
+NORM_SEQ_TILE = 32
 NORM_TILE = NORM_SEQ_TILE // NORM_P0
 norm_io_layout = [S(0), R]
 norm_arg_layout = [R]
@@ -228,28 +228,30 @@ FFN_DOWN_K_CHUNKS = FFN_HID // FFN_DOWN_K_CHUNK  # 2560 / 320 = 8
 # Masked Softmax (bf16, 128-col causal)
 # ----------------------------------------------------------------
 Tint = int32
-SOFTMAX_TILE_ROWS = 8  # kernel processes 8 rows at a time
+SOFTMAX_TILE_ROWS = 8  # per-core kernel processes [8, SEQ]
+SOFTMAX_NUM_TILES = SEQ // SOFTMAX_TILE_ROWS  # 16 tiles — all processed in parallel per head
 
-masked_softmax_ext = ExternalModule(
-    top="masked_softmax_128_bf16",
-    impl_path=KERNEL_BF16_PATH + "masked_softmax_128_bf16.cc",
-    input_idx=[0, 1],
-    output_idx=[2],
+softmax_ext = ExternalModule(
+    top="softmax_128_bf16",
+    impl_path=KERNEL_BF16_PATH + "softmax_128_bf16.cc",
+    input_idx=[0],
+    output_idx=[1],
 )
 
 @df.region()
-def masked_softmax_kernel(
-    scores: Ty[SOFTMAX_TILE_ROWS, SEQ],
-    row_start: Tint[1],
-    weights: Ty[SOFTMAX_TILE_ROWS, SEQ],
+def softmax_kernel(
+    scores: Ty[SEQ, SEQ],
+    weights: Ty[SEQ, SEQ],
 ):
-    @df.kernel(mapping=[1, 1], args=[scores, row_start, weights])
+    @df.kernel(mapping=[SOFTMAX_NUM_TILES], args=[scores, weights])
     def core(
-        local_scores: Ty[SOFTMAX_TILE_ROWS, SEQ] @ [S(0), S(1)],
-        local_row: Tint[1] @ [R],
-        local_weights: Ty[SOFTMAX_TILE_ROWS, SEQ] @ [S(0), S(1)],
+        local_scores: Ty[SEQ, SEQ] @ [S(0), R],
+        local_weights: Ty[SEQ, SEQ] @ [S(0), R],
     ):
-        masked_softmax_ext(local_scores, local_row, local_weights)
+        softmax_ext(local_scores, local_weights)
+
+# Pre-compute causal mask: upper-triangular True where col > row
+_causal_mask = np.triu(np.ones((SEQ, SEQ), dtype=bool), k=1)  # [SEQ, SEQ]
 
 # ----------------------------------------------------------------
 # SiLU (bf16, FFN_HID=2560, per-core tile [4][160])
@@ -374,6 +376,22 @@ def rope_fused_region(x: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM],
              lo: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM] @ MatLy):
         rope_fused_ext(lx, lsc, lo)
 
+# Parallel RoPE: process 5 heads per dispatch (mapping=[5,1], verified working).
+# Q_H=15 = 3×5 → 3 calls/tile instead of 15; KV_H=5 → 1 call/tile instead of 5.
+# Each of the 5 cores gets [ROPE_FUSED_TILE=32, HEAD_DIM=64] — one head's [32,64].
+ROPE_CHUNK = 5  # heads per parallel dispatch
+RopeLy = [S(0), S(1)]
+
+@df.region()
+def rope_fused_5h_region(x:       Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM],
+                          sin_cos: Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM],
+                          out:     Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM]):
+    @df.kernel(mapping=[ROPE_CHUNK, 1], args=[x, sin_cos, out])
+    def core(lx:  Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM] @ RopeLy,
+             lsc: Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM] @ RopeLy,
+             lo:  Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM] @ RopeLy):
+        rope_fused_ext(lx, lsc, lo)
+
 
 # ##############################################################
 # BUILD
@@ -390,7 +408,7 @@ gemm_attn_value_mod = df.build(gemm_attn_value_kernel, project="text_encoder_bf1
 gemm_ffn_up_mod = df.build(gemm_ffn_up_kernel, project="text_encoder_bf16/gemm_ffn_up.prj", target="aie", mapping_primitives=gemm_ffn_up_mp)
 gemm_ffn_down_mod = df.build(gemm_ffn_down_kernel, project="text_encoder_bf16/gemm_ffn_down.prj", target="aie", mapping_primitives=gemm_ffn_down_mp)
 
-masked_softmax_mod = df.build(masked_softmax_kernel, target="aie", project="text_encoder_bf16/masked_softmax.prj")
+softmax_mod = df.build(softmax_kernel, target="aie", project="text_encoder_bf16/softmax.prj")
 silu_mod = df.build(silu_kernel, target="aie", project="text_encoder_bf16/silu.prj")
 
 # Legacy decomposed RoPE builds commented out, replaced by rope_fused_mod
@@ -404,6 +422,7 @@ silu_mod = df.build(silu_kernel, target="aie", project="text_encoder_bf16/silu.p
 # add32_mod = df.build(add32_region, target="aie", project="text_encoder_bf16/rope/add32.prj")
 # sub32_mod = df.build(sub32_region, target="aie", project="text_encoder_bf16/rope/sub32.prj")
 rope_fused_mod = df.build(rope_fused_region, target="aie", project="text_encoder_bf16/rope/fused.prj")
+rope_fused_5h_mod = df.build(rope_fused_5h_region, target="aie", project="text_encoder_bf16/rope/fused_5h.prj")
 
 
 # ##############################################################
@@ -422,15 +441,16 @@ ATTN_SCALE = NP_DTYPE(1.0 / (HEAD_DIM ** 0.5))
 
 
 def masked_softmax_fn(attention_score, attention_weight):
-    """bf16 masked softmax. Processes [8, 128] tiles per head."""
+    """bf16 causal softmax. Causal mask pre-applied; all 16 row-tiles run in parallel per head.
+    15 calls/block (one per head) vs 240 before."""
     for h in range(Q_H):
-        for tile_idx in range(SEQ // SOFTMAX_TILE_ROWS):
-            row_start = tile_idx * SOFTMAX_TILE_ROWS
-            row_start_np = np.array([row_start], dtype=np.int32)
-            score_tile = np.ascontiguousarray(attention_score[row_start:row_start + SOFTMAX_TILE_ROWS, h, :])
-            weight_tile = np.zeros((SOFTMAX_TILE_ROWS, SEQ), dtype=NP_DTYPE)
-            masked_softmax_mod(score_tile, row_start_np, weight_tile)
-            attention_weight[row_start:row_start + SOFTMAX_TILE_ROWS, h * SEQ:(h + 1) * SEQ] = weight_tile
+        # Extract [SEQ, SEQ] score matrix for this head
+        score_head = np.ascontiguousarray(attention_score[:, h, :].astype(np.float32))
+        score_head[_causal_mask] = -np.inf  # apply causal mask: future positions → -inf
+        score_head_bf16 = score_head.astype(NP_DTYPE)
+        weight_head = np.zeros((SEQ, SEQ), dtype=NP_DTYPE)
+        softmax_mod(score_head_bf16, weight_head)
+        attention_weight[:, h * SEQ:(h + 1) * SEQ] = weight_head
 
 
 def _precompute_sin_cos(tile_rows, head_dim, max_wavelength, pos_offset):
@@ -446,26 +466,30 @@ def _precompute_sin_cos(tile_rows, head_dim, max_wavelength, pos_offset):
 
 
 def rope_apply_packed(packed_bf16, heads, head_dim=64, max_wavelength=10_000.0, pos_offset=0):
-    """RoPE via single fused NPU kernel (rope_fused_float32). One call per head per 32-row tile.
-    Sin/cos are precomputed on host. bf16 in -> float32 NPU -> bf16 out."""
+    """RoPE via 5-head parallel dispatch (mapping=[5,1]).
+    Q_H=15: 3 calls/tile (was 15); KV_H=5: 1 call/tile (was 5).
+    Sin/cos tiled to [5*32, 64] so each of 5 cores gets its own [32,64] copy."""
     packed = packed_bf16.astype(np.float32)
     seq_len, total_dim = packed.shape
     D = head_dim
     tile_rows = ROPE_FUSED_TILE
+    chunk = ROPE_CHUNK  # 5 heads per dispatch
 
     out = np.empty_like(packed, dtype=np.float32)
 
     for t0 in range(0, seq_len, tile_rows):
         rows = min(tile_rows, seq_len - t0)
         sin_cos = _precompute_sin_cos(tile_rows, D, max_wavelength, pos_offset + t0)
+        sc_batch = np.tile(sin_cos, (chunk, 1))  # [5*32, 64]
 
-        for h in range(heads):
-            x_tile = np.zeros((tile_rows, D), dtype=np.float32)
-            x_tile[:rows, :] = packed[t0:t0 + rows, h * D:(h + 1) * D]
-            out_tile = np.zeros((tile_rows, D), dtype=np.float32)
-            sc_copy = sin_cos.copy()
-            rope_fused_mod(x_tile, sc_copy, out_tile)
-            out[t0:t0 + rows, h * D:(h + 1) * D] = out_tile[:rows, :]
+        for h0 in range(0, heads, chunk):
+            x_batch = np.zeros((chunk * tile_rows, D), dtype=np.float32)
+            for i, h in enumerate(range(h0, h0 + chunk)):
+                x_batch[i * tile_rows:i * tile_rows + rows, :] = packed[t0:t0 + rows, h * D:(h + 1) * D]
+            out_batch = np.zeros_like(x_batch)
+            rope_fused_5h_mod(x_batch, sc_batch, out_batch)
+            for i, h in enumerate(range(h0, h0 + chunk)):
+                out[t0:t0 + rows, h * D:(h + 1) * D] = out_batch[i * tile_rows:i * tile_rows + rows, :]
 
     return out.astype(NP_DTYPE)
 

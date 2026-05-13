@@ -220,8 +220,8 @@ norm = ExternalModule(
     input_idx=[0, 1],
     output_idx=[2],
 )
-NORM_P0 = 4
-NORM_SEQ_TILE = 16
+NORM_P0 = 8
+NORM_SEQ_TILE = 32
 norm_io_layout = [S(0), R]
 norm_arg_layout = [R]
 
@@ -466,6 +466,21 @@ def rope_fused_region(x: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM],
              lo: Ty_rope[ROPE_FUSED_TILE, HEAD_DIM] @ MatLy):
         rope_fused_ext(lx, lsc, lo)
 
+# Parallel RoPE: process 5 heads per dispatch (mapping=[5,1], verified working).
+# Q_H=15 = 3×5 → 3 calls/tile; KV_H=5 → 1 call/tile.
+ROPE_CHUNK = 5
+RopeLy = [S(0), S(1)]
+
+@df.region()
+def rope_fused_5h_region(x:       Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM],
+                          sin_cos: Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM],
+                          out:     Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM]):
+    @df.kernel(mapping=[ROPE_CHUNK, 1], args=[x, sin_cos, out])
+    def core(lx:  Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM] @ RopeLy,
+             lsc: Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM] @ RopeLy,
+             lo:  Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM] @ RopeLy):
+        rope_fused_ext(lx, lsc, lo)
+
 
 # ##############################################################
 # BUILD
@@ -501,6 +516,7 @@ silu_mod = df.build(silu_kernel, target="aie", project="action_expert_bf16/silu.
 # add32_mod   = df.build(add32_region, target="aie", project="action_expert_bf16/rope/add32.prj")
 # sub32_mod   = df.build(sub32_region, target="aie", project="action_expert_bf16/rope/sub32.prj")
 rope_fused_mod = df.build(rope_fused_region, target="aie", project="action_expert_bf16/rope/fused.prj")
+rope_fused_5h_mod = df.build(rope_fused_5h_region, target="aie", project="action_expert_bf16/rope/fused_5h.prj")
 
 # Self-attention specific
 gemm_kv_self_mod = None
@@ -569,26 +585,29 @@ def _precompute_sin_cos(tile_rows, head_dim, max_wavelength, pos_offset):
 
 
 def rope_apply_packed(packed_bf16, heads, head_dim=64, max_wavelength=10_000.0, pos_offset=0):
-    """RoPE via single fused NPU kernel (rope_fused_float32). One call per head per 32-row tile.
-    Sin/cos are precomputed on host. bf16 in -> float32 NPU -> bf16 out."""
+    """RoPE via 5-head parallel dispatch (mapping=[5,1]).
+    Q_H=15: 3 calls/tile (was 15); KV_H=5: 1 call/tile (was 5)."""
     packed = packed_bf16.astype(np.float32)
     seq_len, total_dim = packed.shape
     D = head_dim
     tile_rows = ROPE_FUSED_TILE
+    chunk = ROPE_CHUNK  # 5 heads per dispatch
 
     out = np.empty_like(packed, dtype=np.float32)
 
     for t0 in range(0, seq_len, tile_rows):
         rows = min(tile_rows, seq_len - t0)
         sin_cos = _precompute_sin_cos(tile_rows, D, max_wavelength, pos_offset + t0)
+        sc_batch = np.tile(sin_cos, (chunk, 1))  # [5*32, 64]
 
-        for h in range(heads):
-            x_tile = np.zeros((tile_rows, D), dtype=np.float32)
-            x_tile[:rows, :] = packed[t0:t0 + rows, h * D:(h + 1) * D]
-            out_tile = np.zeros((tile_rows, D), dtype=np.float32)
-            sc_copy = sin_cos.copy()
-            rope_fused_mod(x_tile, sc_copy, out_tile)
-            out[t0:t0 + rows, h * D:(h + 1) * D] = out_tile[:rows, :]
+        for h0 in range(0, heads, chunk):
+            x_batch = np.zeros((chunk * tile_rows, D), dtype=np.float32)
+            for i, h in enumerate(range(h0, h0 + chunk)):
+                x_batch[i * tile_rows:i * tile_rows + rows, :] = packed[t0:t0 + rows, h * D:(h + 1) * D]
+            out_batch = np.zeros_like(x_batch)
+            rope_fused_5h_mod(x_batch, sc_batch, out_batch)
+            for i, h in enumerate(range(h0, h0 + chunk)):
+                out[t0:t0 + rows, h * D:(h + 1) * D] = out_batch[i * tile_rows:i * tile_rows + rows, :]
 
     return out.astype(NP_DTYPE)
 
