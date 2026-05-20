@@ -1,4 +1,27 @@
 *.output
 __pycache__
-*.prj/build
 *.json
+.claude/
+simulation/checkpoints/
+simulation/outputs/
+
+# Images and graphs
+*.png
+*.gif
+*.jpg
+*.jpeg
+
+# CMake build system noise
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled artifacts
+*.o
+*.a
+*.elf
+
+# Allo kernel compilation artifacts
+top.mlir.prj/
+*.data

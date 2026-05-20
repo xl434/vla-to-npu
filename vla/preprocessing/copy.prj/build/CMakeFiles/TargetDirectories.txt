@@ -1,3 +1,0 @@
-/home/dl2239/vla-to-npu/vla/preprocessing/copy.prj/build/CMakeFiles/top.dir
-/home/dl2239/vla-to-npu/vla/preprocessing/copy.prj/build/CMakeFiles/edit_cache.dir
-/home/dl2239/vla-to-npu/vla/preprocessing/copy.prj/build/CMakeFiles/rebuild_cache.dir

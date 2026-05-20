@@ -30,8 +30,9 @@ _TRAIN_DIR = os.path.dirname(os.path.abspath(__file__))
 _SIM_DIR   = os.path.abspath(os.path.join(_TRAIN_DIR, ".."))
 sys.path.insert(0, _SIM_DIR)
 
-from env.pusht_env import WORKSPACE
+from env.pusht_env import WORKSPACE, make_t_shape
 from env.pusht_env_multi import PushTEnvMulti, COMMANDS, COMMAND_PROMPTS, TARGETS
+from shapely.geometry import Polygon as ShapelyPolygon
 from model.model_conditioned import (
     VLAConditioned, tokenize,
     CHUNK_SIZE, ACTION_DIM, STATE_DIM,
@@ -191,12 +192,23 @@ def train_bc(total_steps: int = 10_000,
 # ══════════════════════════════════════════════════════════════════════════════
 
 GAMMA         = 0.95
-STEPS_EP      = 192
-SUCCESS_PX    = 30
-SUCCESS_BONUS = 2.0
+STEPS_EP      = 256
+SUCCESS_PX    = 30      # primary success: block center within this of target
+SUCCESS_BONUS = 2.0     # reward bonus when solved
 LOG_STD_INIT  = -1.0
 LOG_STD_MIN   = -3.0
 BASELINE_ALPHA = 0.05
+
+
+def _overlap_iou(env: PushTEnvMulti) -> float:
+    """IoU between block T-shape and target T-shape (0.0 – 1.0)."""
+    block_poly  = ShapelyPolygon(make_t_shape(env.block_x,  env.block_y,  env.block_theta))
+    target_poly = ShapelyPolygon(make_t_shape(env.target_x, env.target_y, 0.0))
+    if not block_poly.is_valid or not target_poly.is_valid:
+        return 0.0
+    inter = block_poly.intersection(target_poly).area
+    union = block_poly.union(target_poly).area
+    return float(inter / union) if union > 0 else 0.0
 
 
 class RLPolicyConditioned(nn.Module):
@@ -224,12 +236,24 @@ class RLPolicyConditioned(nn.Module):
         return actions, log_prob, entropy
 
 
-def _step_reward(env: PushTEnvMulti) -> float:
-    dist = np.hypot(env.block_x - env.target_x, env.block_y - env.target_y)
-    r = -dist / WORKSPACE
-    if dist < SUCCESS_PX:
+def _step_reward(env: PushTEnvMulti) -> tuple:
+    """Returns (reward, solved).
+
+    Dense distance reward (learnable from anywhere) + soft IoU bonus
+    (orientation guidance once close) + success bonus.
+
+      distance:  -dist/WORKSPACE          always informative  [-1, 0]
+      iou bonus: +0.5 * iou               soft orientation    [0, 0.5]
+      bonus:     +2.0 if dist < 30px      strong success spike
+    """
+    dist   = np.hypot(env.block_x - env.target_x, env.block_y - env.target_y)
+    solved = dist < SUCCESS_PX
+
+    r  = -dist / WORKSPACE          # dense distance signal
+    r += 0.5 * _overlap_iou(env)    # soft orientation bonus
+    if solved:
         r += SUCCESS_BONUS
-    return r
+    return r, solved
 
 
 def _rollout(policy: RLPolicyConditioned, env: PushTEnvMulti, prompt: str):
@@ -242,9 +266,9 @@ def _rollout(policy: RLPolicyConditioned, env: PushTEnvMulti, prompt: str):
         step_r = []
         for t in range(CHUNK_SIZE):
             env.step(actions[t])
-            step_r.append(_step_reward(env))
-            if np.hypot(env.block_x - env.target_x,
-                        env.block_y - env.target_y) < SUCCESS_PX:
+            r, s = _step_reward(env)
+            step_r.append(r)
+            if s:
                 solved = True
 
         log_probs.append(lp)
@@ -258,7 +282,8 @@ def train_rl(total_episodes: int = 3000,
              entropy_coef: float = 0.01,
              save_every: int = 500,
              seed: int = 0,
-             resume: bool = False):
+             resume: bool = False,
+             cmd_weights: dict = None):
     """REINFORCE fine-tuning starting from the latest BC checkpoint."""
 
     model = VLAConditioned(seed=seed)
@@ -281,7 +306,15 @@ def train_rl(total_episodes: int = 3000,
     )
 
     start_ep, reward_history, solved_history = 0, [], []
-    baseline = -0.3
+    # Per-command EMA baselines — up/down have different reward scales
+    baselines = {cmd: -0.3 for cmd in COMMANDS}
+
+    # Command sampling weights (default uniform; oversample hard commands)
+    if cmd_weights is None:
+        cmd_weights = {cmd: 1.0 for cmd in COMMANDS}
+    cmd_names = list(cmd_weights.keys())
+    cmd_probs  = np.array([cmd_weights[c] for c in cmd_names], dtype=float)
+    cmd_probs /= cmd_probs.sum()
 
     if resume:
         rl_path, _ = _latest_ckpt("rl_ep")
@@ -291,7 +324,11 @@ def train_rl(total_episodes: int = 3000,
             policy.log_std.data = ckpt["log_std"]
             optimizer.load_state_dict(ckpt["optimizer_state"])
             start_ep = ckpt["episode"]
-            baseline = ckpt.get("baseline", baseline)
+            # Handle both old (scalar "baseline") and new (dict "baselines") formats
+            if "baselines" in ckpt:
+                baselines = ckpt["baselines"]
+            elif "baseline" in ckpt:
+                baselines = {cmd: ckpt["baseline"] for cmd in COMMANDS}
             reward_history = ckpt.get("reward_history", [])
             solved_history = ckpt.get("solved_history", [])
             print(f"  resumed RL from episode {start_ep}")
@@ -306,7 +343,7 @@ def train_rl(total_episodes: int = 3000,
     t0  = time.perf_counter()
 
     for ep in range(start_ep, total_episodes):
-        cmd    = rng.choice(COMMANDS)
+        cmd    = rng.choice(cmd_names, p=cmd_probs)
         prompt = COMMAND_PROMPTS[cmd]
         env.reset(command=cmd)
         env.ee_x    = float(rng.uniform(40, WORKSPACE - 40))
@@ -324,9 +361,11 @@ def train_rl(total_episodes: int = 3000,
             returns.insert(0, G)
         returns_t = torch.tensor(returns, dtype=torch.float32)
 
+        # Per-command EMA baseline — keeps gradients meaningful across directions
         ep_return = returns_t[0].item()
-        baseline  = (1 - BASELINE_ALPHA) * baseline + BASELINE_ALPHA * ep_return
-        advantages = returns_t - baseline
+        baselines[cmd] = ((1 - BASELINE_ALPHA) * baselines[cmd]
+                          + BASELINE_ALPHA * ep_return)
+        advantages = returns_t - baselines[cmd]
         if advantages.std() > 1e-6:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -349,11 +388,12 @@ def train_rl(total_episodes: int = 3000,
             solve_rate = np.mean(solved_history[-50:])
             std_now    = torch.exp(policy.log_std[0]).item()
             elapsed    = time.perf_counter() - t0
+            bl_str     = " ".join(f"{c[0]}:{baselines[c]:.2f}" for c in COMMANDS)
             print(f"  ep {ep+1:5d}/{total_episodes}  "
                   f"reward={recent_r:+.3f}  "
                   f"solved={solve_rate:.0%}  "
                   f"std={std_now:.3f}  "
-                  f"baseline={baseline:.3f}  "
+                  f"bl=[{bl_str}]  "
                   f"({elapsed:.0f}s)  cmd={cmd}")
 
         if (ep + 1) % save_every == 0:
@@ -363,7 +403,7 @@ def train_rl(total_episodes: int = 3000,
                 model_state=model.state_dict(),
                 log_std=policy.log_std.data,
                 optimizer_state=optimizer.state_dict(),
-                baseline=baseline,
+                baselines=baselines,
                 reward_history=reward_history,
                 solved_history=solved_history,
             )
@@ -399,7 +439,7 @@ def eval_cpu(ckpt_path: str = None, num_episodes: int = 20, seed: int = 0):
         env.block_y = WORKSPACE / 2 + float(rng.uniform(-60, 60))
 
         ep_solved = False
-        for _ in range(STEPS_EP // CHUNK_SIZE):
+        for _ in range(256 // CHUNK_SIZE):
             state7 = env.get_state()
             actions = model.predict(prompt, state7)   # [32, 2]
             for t in range(CHUNK_SIZE):
@@ -408,10 +448,11 @@ def eval_cpu(ckpt_path: str = None, num_episodes: int = 20, seed: int = 0):
             if dist < SUCCESS_PX:
                 ep_solved = True
 
+        iou_final  = _overlap_iou(env)
         dist_final = np.hypot(env.block_x - env.target_x, env.block_y - env.target_y)
         results[cmd].append(ep_solved)
         print(f"  ep {ep+1:3d} [{cmd:5s}] {'SOLVED' if ep_solved else 'failed'} "
-              f"(dist={dist_final:.1f}px)")
+              f"(iou={iou_final:.2f}  dist={dist_final:.1f}px)")
 
     print("\nSolve rates by command:")
     total = 0
@@ -437,7 +478,9 @@ if __name__ == "__main__":
     parser.add_argument("--entropy_coef", type=float, default=0.01)
     parser.add_argument("--save_every",  type=int,   default=1000)
     parser.add_argument("--seed",        type=int,   default=0)
-    parser.add_argument("--resume",      action="store_true")
+    parser.add_argument("--resume",         action="store_true")
+    parser.add_argument("--oversample_hard", action="store_true",
+                        help="Sample up/down 2x more than left/right")
     parser.add_argument("--eval",        action="store_true",
                         help="CPU evaluation of latest checkpoint")
     parser.add_argument("--ckpt",        type=str,   default=None)
@@ -460,6 +503,8 @@ if __name__ == "__main__":
         )
 
     if args.phase in ("rl", "both"):
+        cmd_weights = ({"up": 2.0, "down": 2.0, "left": 1.0, "right": 1.0}
+                       if args.oversample_hard else None)
         train_rl(
             total_episodes=args.rl_episodes,
             lr=args.rl_lr,
@@ -467,4 +512,5 @@ if __name__ == "__main__":
             save_every=args.save_every,
             seed=args.seed,
             resume=args.resume and args.phase == "rl",
+            cmd_weights=cmd_weights,
         )

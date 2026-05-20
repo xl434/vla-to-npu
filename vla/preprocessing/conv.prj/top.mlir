@@ -45,7 +45,7 @@ module {
     aie.objectfifo @fifo_17(%mem_tile_3_1, {%tile_3_4}, 2 : i32) : !aie.objectfifo<memref<64x64xbf16>> 
     aie.objectfifo @fifo_18(%mem_tile_3_1, {%tile_3_5}, 2 : i32) : !aie.objectfifo<memref<64x64xbf16>> 
     aie.objectfifo @fifo_19(%shim_noc_tile_3_0, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<1x4x64x64xbf16>> 
-    aie.objectfifo @fifo_20(%mem_tile_0_1, {%tile_3_2, %tile_1_2, %tile_2_4, %tile_3_4, %tile_0_4, %tile_0_5, %tile_1_5, %tile_3_3, %tile_1_4, %tile_0_3, %tile_2_3, %tile_2_5, %tile_0_2, %tile_3_5, %tile_2_2, %tile_1_3}, 2 : i32) : !aie.objectfifo<memref<16x16xbf16>> 
+    aie.objectfifo @fifo_20(%mem_tile_0_1, {%tile_1_2, %tile_2_4, %tile_2_2, %tile_0_4, %tile_0_2, %tile_1_5, %tile_2_3, %tile_3_4, %tile_1_4, %tile_0_5, %tile_2_5, %tile_3_2, %tile_0_3, %tile_3_5, %tile_1_3, %tile_3_3}, 2 : i32) : !aie.objectfifo<memref<16x16xbf16>> 
     aie.objectfifo @fifo_21(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1x1x16x16xbf16>> 
     aie.objectfifo @fifo_22(%tile_0_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<4x4xbf16>> 
     aie.objectfifo @fifo_23(%tile_0_3, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<4x4xbf16>> 

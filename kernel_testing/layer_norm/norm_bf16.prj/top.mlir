@@ -1,0 +1,233 @@
+module {
+  aie.device(npu1_4col) {
+    func.func private @layer_norm_bf16(memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>)
+    func.func private @fill_zeros_bf16_4_768_vector(memref<4x768xbf16>)
+    func.func private @add_bf16_vector(memref<4x768xbf16>, memref<4x768xbf16>, memref<4x768xbf16>)
+    %shim_noc_tile_0_0 = aie.tile(0, 0)
+    %shim_noc_tile_1_0 = aie.tile(1, 0)
+    %shim_noc_tile_2_0 = aie.tile(2, 0)
+    %shim_noc_tile_3_0 = aie.tile(3, 0)
+    %mem_tile_0_1 = aie.tile(0, 1)
+    %mem_tile_1_1 = aie.tile(1, 1)
+    %mem_tile_2_1 = aie.tile(2, 1)
+    %mem_tile_3_1 = aie.tile(3, 1)
+    %tile_0_2 = aie.tile(0, 2)
+    %tile_0_3 = aie.tile(0, 3)
+    %tile_1_2 = aie.tile(1, 2)
+    %tile_1_3 = aie.tile(1, 3)
+    %tile_2_2 = aie.tile(2, 2)
+    %tile_2_3 = aie.tile(2, 3)
+    %tile_3_2 = aie.tile(3, 2)
+    %tile_3_3 = aie.tile(3, 3)
+    aie.objectfifo @pipe_0(%tile_0_3, {%tile_0_2}, 1 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @pipe_1(%tile_1_3, {%tile_1_2}, 1 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @pipe_2(%tile_2_3, {%tile_2_2}, 1 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @pipe_3(%tile_3_3, {%tile_3_2}, 1 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_0(%mem_tile_0_1, {%tile_0_3}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_1(%mem_tile_0_1, {%tile_1_3}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_2(%mem_tile_0_1, {%tile_2_3}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_3(%mem_tile_0_1, {%tile_3_3}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_4(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1x4x4x768xbf16>> 
+    aie.objectfifo @fifo_5(%mem_tile_1_1, {%tile_3_3, %tile_1_3, %tile_2_3, %tile_0_3}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
+    aie.objectfifo @fifo_6(%shim_noc_tile_1_0, {%mem_tile_1_1}, 2 : i32) : !aie.objectfifo<memref<1x1x1x768xbf16>> 
+    aie.objectfifo @fifo_7(%mem_tile_2_1, {%tile_0_2, %tile_2_2, %tile_3_2, %tile_1_2}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
+    aie.objectfifo @fifo_8(%shim_noc_tile_2_0, {%mem_tile_2_1}, 2 : i32) : !aie.objectfifo<memref<1x1x1x768xbf16>> 
+    aie.objectfifo @fifo_9(%tile_0_2, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_10(%tile_1_2, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_11(%tile_2_2, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_12(%tile_3_2, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
+    aie.objectfifo @fifo_13(%mem_tile_3_1, {%shim_noc_tile_3_0}, 2 : i32) : !aie.objectfifo<memref<1x4x4x768xbf16>> 
+    aie.objectfifo.link [@fifo_4] -> [@fifo_0, @fifo_1, @fifo_2, @fifo_3]([] [0, 3072, 6144, 9216])
+    aie.objectfifo.link [@fifo_6] -> [@fifo_5]([] [])
+    aie.objectfifo.link [@fifo_8] -> [@fifo_7]([] [])
+    aie.objectfifo.link [@fifo_9, @fifo_10, @fifo_11, @fifo_12] -> [@fifo_13]([0, 3072, 6144, 9216] [])
+    %buffer_0_2 = aie.buffer(%tile_0_2) : memref<4x768xbf16> 
+    %buffer_0_2_0 = aie.buffer(%tile_0_2) : memref<4x768xbf16> 
+    %buffer_1_2 = aie.buffer(%tile_1_2) : memref<4x768xbf16> 
+    %buffer_1_2_1 = aie.buffer(%tile_1_2) : memref<4x768xbf16> 
+    %buffer_2_2 = aie.buffer(%tile_2_2) : memref<4x768xbf16> 
+    %buffer_2_2_2 = aie.buffer(%tile_2_2) : memref<4x768xbf16> 
+    %buffer_3_2 = aie.buffer(%tile_3_2) : memref<4x768xbf16> 
+    %buffer_3_2_3 = aie.buffer(%tile_3_2) : memref<4x768xbf16> 
+    %core_0_3 = aie.core(%tile_0_3) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_0(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @fill_zeros_bf16_4_768_vector(%1) {lib = "fill_zeros_bf16_4_768_vector"} : (memref<4x768xbf16>) -> ()
+        %2 = aie.objectfifo.acquire @fifo_0(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %4 = aie.objectfifo.acquire @fifo_5(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_0(Produce, 1)
+        aie.objectfifo.release @fifo_0(Consume, 1)
+        aie.objectfifo.release @fifo_5(Consume, 1)
+      }
+      aie.end
+    } {link_with = "external0.o"}
+    %core_0_2 = aie.core(%tile_0_2) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_0(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %2 = aie.objectfifo.acquire @fifo_7(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        affine.for %arg1 = 0 to 4 {
+          affine.for %arg2 = 0 to 768 {
+            %6 = affine.load %3[%arg2] : memref<768xbf16>
+            affine.store %6, %buffer_0_2_0[%arg1, %arg2] : memref<4x768xbf16>
+          }
+        }
+        %4 = aie.objectfifo.acquire @fifo_9(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @add_bf16_vector(%1, %buffer_0_2_0, %5) {lib = "add_bf16_vector"} : (memref<4x768xbf16>, memref<4x768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_0(Consume, 1)
+        aie.objectfifo.release @fifo_7(Consume, 1)
+        aie.objectfifo.release @fifo_9(Produce, 1)
+      }
+      aie.end
+    } {link_with = "external1.o"}
+    %core_1_3 = aie.core(%tile_1_3) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_1(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @fill_zeros_bf16_4_768_vector(%1) {lib = "fill_zeros_bf16_4_768_vector"} : (memref<4x768xbf16>) -> ()
+        %2 = aie.objectfifo.acquire @fifo_1(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %4 = aie.objectfifo.acquire @fifo_5(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_1(Produce, 1)
+        aie.objectfifo.release @fifo_1(Consume, 1)
+        aie.objectfifo.release @fifo_5(Consume, 1)
+      }
+      aie.end
+    } {link_with = "external0.o"}
+    %core_2_3 = aie.core(%tile_2_3) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_2(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @fill_zeros_bf16_4_768_vector(%1) {lib = "fill_zeros_bf16_4_768_vector"} : (memref<4x768xbf16>) -> ()
+        %2 = aie.objectfifo.acquire @fifo_2(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %4 = aie.objectfifo.acquire @fifo_5(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_2(Produce, 1)
+        aie.objectfifo.release @fifo_2(Consume, 1)
+        aie.objectfifo.release @fifo_5(Consume, 1)
+      }
+      aie.end
+    } {link_with = "external0.o"}
+    %core_3_3 = aie.core(%tile_3_3) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_3(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @fill_zeros_bf16_4_768_vector(%1) {lib = "fill_zeros_bf16_4_768_vector"} : (memref<4x768xbf16>) -> ()
+        %2 = aie.objectfifo.acquire @fifo_3(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %4 = aie.objectfifo.acquire @fifo_5(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_3(Produce, 1)
+        aie.objectfifo.release @fifo_3(Consume, 1)
+        aie.objectfifo.release @fifo_5(Consume, 1)
+      }
+      aie.end
+    } {link_with = "external0.o"}
+    %core_1_2 = aie.core(%tile_1_2) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_1(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %2 = aie.objectfifo.acquire @fifo_7(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        affine.for %arg1 = 0 to 4 {
+          affine.for %arg2 = 0 to 768 {
+            %6 = affine.load %3[%arg2] : memref<768xbf16>
+            affine.store %6, %buffer_1_2_1[%arg1, %arg2] : memref<4x768xbf16>
+          }
+        }
+        %4 = aie.objectfifo.acquire @fifo_10(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @add_bf16_vector(%1, %buffer_1_2_1, %5) {lib = "add_bf16_vector"} : (memref<4x768xbf16>, memref<4x768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_1(Consume, 1)
+        aie.objectfifo.release @fifo_7(Consume, 1)
+        aie.objectfifo.release @fifo_10(Produce, 1)
+      }
+      aie.end
+    } {link_with = "external1.o"}
+    %core_2_2 = aie.core(%tile_2_2) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_2(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %2 = aie.objectfifo.acquire @fifo_7(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        affine.for %arg1 = 0 to 4 {
+          affine.for %arg2 = 0 to 768 {
+            %6 = affine.load %3[%arg2] : memref<768xbf16>
+            affine.store %6, %buffer_2_2_2[%arg1, %arg2] : memref<4x768xbf16>
+          }
+        }
+        %4 = aie.objectfifo.acquire @fifo_11(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @add_bf16_vector(%1, %buffer_2_2_2, %5) {lib = "add_bf16_vector"} : (memref<4x768xbf16>, memref<4x768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_2(Consume, 1)
+        aie.objectfifo.release @fifo_7(Consume, 1)
+        aie.objectfifo.release @fifo_11(Produce, 1)
+      }
+      aie.end
+    } {link_with = "external1.o"}
+    %core_3_2 = aie.core(%tile_3_2) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
+        %0 = aie.objectfifo.acquire @pipe_3(Consume, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        %2 = aie.objectfifo.acquire @fifo_7(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
+        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
+        affine.for %arg1 = 0 to 4 {
+          affine.for %arg2 = 0 to 768 {
+            %6 = affine.load %3[%arg2] : memref<768xbf16>
+            affine.store %6, %buffer_3_2_3[%arg1, %arg2] : memref<4x768xbf16>
+          }
+        }
+        %4 = aie.objectfifo.acquire @fifo_12(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
+        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
+        func.call @add_bf16_vector(%1, %buffer_3_2_3, %5) {lib = "add_bf16_vector"} : (memref<4x768xbf16>, memref<4x768xbf16>, memref<4x768xbf16>) -> ()
+        aie.objectfifo.release @pipe_3(Consume, 1)
+        aie.objectfifo.release @fifo_7(Consume, 1)
+        aie.objectfifo.release @fifo_12(Produce, 1)
+      }
+      aie.end
+    } {link_with = "external1.o"}
+    aiex.runtime_sequence(%arg0: memref<13056xbf16>, %arg1: memref<12288xbf16>, %arg2: memref<768xbf16>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 4, 4, 768][0, 3072, 768, 1]) {id = 0 : i64, issue_token = true, metadata = @fifo_4} : memref<13056xbf16>
+      aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 768][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @fifo_6} : memref<768xbf16>
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 12288][1, 1, 1, 768][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @fifo_8} : memref<13056xbf16>
+      aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 4, 4, 768][0, 3072, 768, 1]) {id = 0 : i64, issue_token = true, metadata = @fifo_13} : memref<12288xbf16>
+      aiex.npu.dma_wait {symbol = @fifo_13}
+      aie.end
+    }
+  }
+}
