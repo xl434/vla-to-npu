@@ -131,7 +131,7 @@ Ty = bfloat16
 # ===============================================================================
 norm = ExternalModule(
     top="rms_norm_bf16",
-    impl_path="../cc/bf16_old/rms_norm_bf16.cc",
+    impl_path="../cc/old_kernels/bf16_old/rms_norm_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )

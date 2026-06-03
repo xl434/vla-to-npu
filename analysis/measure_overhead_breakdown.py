@@ -33,7 +33,7 @@ sys.path.insert(0, VLA_DIR)
 os.chdir(VLA_DIR)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_JSON = os.path.join(SCRIPT_DIR, "overhead_breakdown_data.json")
+OUTPUT_JSON = os.path.join(SCRIPT_DIR, "data", "overhead_breakdown_data.json")
 
 # We need to import to trigger the build, but we'll also manually
 # replicate the __call__ steps to time them individually

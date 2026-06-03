@@ -22,15 +22,15 @@ module {
     %tile_3_3 = aie.tile(3, 3)
     aie.objectfifo @fifo_0(%mem_tile_0_1 dimensionsToStream [<size = 8, stride = 128>, <size = 4, stride = 8>, <size = 4, stride = 32>, <size = 8, stride = 1>], {%tile_0_3, %tile_0_2}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
     aie.objectfifo @fifo_1(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1x1x32x32xbf16>> 
-    aie.objectfifo @fifo_2(%mem_tile_1_1 dimensionsToStream [<size = 8, stride = 128>, <size = 4, stride = 8>, <size = 4, stride = 32>, <size = 8, stride = 1>], {%tile_1_2, %tile_1_3}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
+    aie.objectfifo @fifo_2(%mem_tile_1_1 dimensionsToStream [<size = 8, stride = 128>, <size = 4, stride = 8>, <size = 4, stride = 32>, <size = 8, stride = 1>], {%tile_1_3, %tile_1_2}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
     aie.objectfifo @fifo_3(%shim_noc_tile_1_0, {%mem_tile_1_1}, 2 : i32) : !aie.objectfifo<memref<1x1x32x32xbf16>> 
     aie.objectfifo @fifo_4(%mem_tile_2_1 dimensionsToStream [<size = 8, stride = 128>, <size = 4, stride = 8>, <size = 4, stride = 32>, <size = 8, stride = 1>], {%tile_2_2, %tile_2_3}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
     aie.objectfifo @fifo_5(%shim_noc_tile_2_0, {%mem_tile_2_1}, 2 : i32) : !aie.objectfifo<memref<1x1x32x32xbf16>> 
-    aie.objectfifo @fifo_6(%mem_tile_3_1 dimensionsToStream [<size = 8, stride = 128>, <size = 4, stride = 8>, <size = 4, stride = 32>, <size = 8, stride = 1>], {%tile_3_3, %tile_3_2}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
+    aie.objectfifo @fifo_6(%mem_tile_3_1 dimensionsToStream [<size = 8, stride = 128>, <size = 4, stride = 8>, <size = 4, stride = 32>, <size = 8, stride = 1>], {%tile_3_2, %tile_3_3}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
     aie.objectfifo @fifo_7(%shim_noc_tile_3_0, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<1x1x32x32xbf16>> 
-    aie.objectfifo @fifo_8(%mem_tile_0_1 dimensionsToStream [<size = 4, stride = 256>, <size = 8, stride = 4>, <size = 8, stride = 32>, <size = 4, stride = 1>], {%tile_0_2, %tile_1_2, %tile_3_2, %tile_2_2}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
+    aie.objectfifo @fifo_8(%mem_tile_0_1 dimensionsToStream [<size = 4, stride = 256>, <size = 8, stride = 4>, <size = 8, stride = 32>, <size = 4, stride = 1>], {%tile_2_2, %tile_1_2, %tile_3_2, %tile_0_2}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
     aie.objectfifo @fifo_9(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1x1x32x32xbf16>> 
-    aie.objectfifo @fifo_10(%mem_tile_1_1 dimensionsToStream [<size = 4, stride = 256>, <size = 8, stride = 4>, <size = 8, stride = 32>, <size = 4, stride = 1>], {%tile_2_3, %tile_1_3, %tile_3_3, %tile_0_3}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
+    aie.objectfifo @fifo_10(%mem_tile_1_1 dimensionsToStream [<size = 4, stride = 256>, <size = 8, stride = 4>, <size = 8, stride = 32>, <size = 4, stride = 1>], {%tile_1_3, %tile_2_3, %tile_3_3, %tile_0_3}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
     aie.objectfifo @fifo_11(%shim_noc_tile_1_0, {%mem_tile_1_1}, 2 : i32) : !aie.objectfifo<memref<1x1x32x32xbf16>> 
     aie.objectfifo @fifo_12(%tile_0_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 
     aie.objectfifo @fifo_13(%tile_0_3, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<32x32xbf16>> 

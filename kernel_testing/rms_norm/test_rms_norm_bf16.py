@@ -17,7 +17,7 @@ Ty = bfloat16
 SEQ = 64
 EMBD = 768
 
-KERNEL_LIB_PATH = "../../cc/bf16_old/"
+KERNEL_LIB_PATH = "../../cc/old_kernels/bf16_old/"
 
 norm = ExternalModule(
     top="rms_norm_bf16",

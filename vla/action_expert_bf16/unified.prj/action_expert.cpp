@@ -34,6 +34,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include <filesystem>
+
 namespace po = boost::program_options;
 
 // ============================================================
@@ -96,6 +98,11 @@ static constexpr size_t SZ_FFN_DOWN_A = (size_t)SEQ * FFN_DOWN_K_CHUNK * 2;  // 
 static constexpr size_t SZ_FFN_DOWN_C = SZ_FULL_EMBD;                    // [32,768] bf16
 static constexpr size_t SZ_W_DOWN_CHUNK = (size_t)FFN_DOWN_K_CHUNK * EMBD * 2;  // [256,768] bf16
 static constexpr size_t SZ_W_FFN_UP  = (size_t)EMBD * FFN_HID * 2;     // [768,2048] bf16
+
+// Flash attention cross-attention sizes
+static constexpr size_t SZ_FA_CROSS_QV = ((size_t)SEQ + TEXT_SEQ) * HEAD_DIM * 2;  // Q[32,64]+V[128,64] packed = 20480 bytes
+static constexpr size_t SZ_FA_CROSS_O  = (size_t)SEQ * HEAD_DIM * 2;               // O[32,64] = 4096 bytes
+static constexpr size_t SZ_FA_CROSS_KT = (size_t)HEAD_DIM * TEXT_SEQ * 2;          // K_T[64,128] = 16384 bytes
 
 // RoPE
 static constexpr size_t SZ_ROPE_X  = (size_t)ROPE_CHUNK * ROPE_FUSED_TILE * HEAD_DIM * 4;  // [160,64] f32
@@ -162,6 +169,14 @@ struct ActiveKernel {
         r.set_arg(0, (unsigned int)3);
         r.set_arg(1, bo_instr); r.set_arg(2, instr_size);
         r.set_arg(3, b3); r.set_arg(4, b4); r.set_arg(5, b5);
+        r.start(); r.wait();
+    }
+
+    void run_fa(xrt::bo &b3, xrt::bo &b4, xrt::bo &b5, xrt::bo &b6) {
+        xrt::run r(k);
+        r.set_arg(0, (unsigned int)3);
+        r.set_arg(1, bo_instr); r.set_arg(2, instr_size);
+        r.set_arg(3, b3); r.set_arg(4, b4); r.set_arg(5, b5); r.set_arg(6, b6);
         r.start(); r.wait();
     }
 };
@@ -256,20 +271,24 @@ int main(int argc, const char *argv[]) {
     po::options_description opts("Action expert forward pass");
     opts.add_options()
         ("help,h",       "help")
-        ("mode",         po::value<std::string>()->required(),          "self or cross")
+        ("mode",         po::value<std::string>()->default_value("self"), "self or cross (single-layer)")
         ("input",        po::value<std::string>()->required(),          "[32,768] bf16 input")
-        ("W_norm_1",     po::value<std::string>()->required(),          "[768] bf16")
-        ("W_norm_2",     po::value<std::string>()->required(),          "[768] bf16")
-        ("Wq",           po::value<std::string>()->required(),          "[768,960] bf16")
-        ("Wk",           po::value<std::string>()->required(),          "[768,320] (self) or [320,320] (cross) bf16")
-        ("Wv",           po::value<std::string>()->required(),          "[768,320] (self) or [320,320] (cross) bf16")
-        ("Wo",           po::value<std::string>()->required(),          "[960,768] bf16")
-        ("W_gate",       po::value<std::string>()->required(),          "[768,2048] bf16")
-        ("W_up",         po::value<std::string>()->required(),          "[768,2048] bf16")
-        ("W_down",       po::value<std::string>()->required(),          "[2048,768] bf16")
+        ("W_norm_1",     po::value<std::string>()->default_value(""),  "[768] bf16")
+        ("W_norm_2",     po::value<std::string>()->default_value(""),  "[768] bf16")
+        ("Wq",           po::value<std::string>()->default_value(""),  "[768,960] bf16")
+        ("Wk",           po::value<std::string>()->default_value(""),  "[768,320] (self) or [320,320] (cross) bf16")
+        ("Wv",           po::value<std::string>()->default_value(""),  "[768,320] (self) or [320,320] (cross) bf16")
+        ("Wo",           po::value<std::string>()->default_value(""),  "[960,768] bf16")
+        ("W_gate",       po::value<std::string>()->default_value(""),  "[768,2048] bf16")
+        ("W_up",         po::value<std::string>()->default_value(""),  "[768,2048] bf16")
+        ("W_down",       po::value<std::string>()->default_value(""),  "[2048,768] bf16")
         ("text_k",       po::value<std::string>()->default_value(""),  "[128,320] bf16 (cross only)")
         ("text_v",       po::value<std::string>()->default_value(""),  "[128,320] bf16 (cross only)")
         ("output",       po::value<std::string>()->default_value("output.data"), "[32,768] bf16")
+        ("num-layers,L", po::value<int>()->default_value(1),           "number of transformer layers")
+        ("skip,S",       po::value<int>()->default_value(2),           "self/cross alternation period (0→self, else→cross)")
+        ("layers-dir",   po::value<std::string>()->default_value(""),  "dir with layer_0/,layer_1/,... weight subdirs")
+        ("kv-dir",       po::value<std::string>()->default_value(""),  "dir with per-layer key/val (from text encoder)")
         ("iters,n",      po::value<int>()->default_value(1),           "forward passes")
         ("verbosity,v",  po::value<int>()->default_value(0),           "verbosity");
 
@@ -282,10 +301,22 @@ int main(int argc, const char *argv[]) {
         std::cerr << e.what() << "\n" << opts; return 1;
     }
 
-    int verbosity = vm["verbosity"].as<int>();
-    int n_iters   = vm["iters"].as<int>();
+    int verbosity  = vm["verbosity"].as<int>();
+    int n_iters    = vm["iters"].as<int>();
+    int num_layers = vm["num-layers"].as<int>();
+    int skip_val   = vm["skip"].as<int>();
+    std::string layers_dir = vm["layers-dir"].as<std::string>();
+    std::string kv_dir     = vm["kv-dir"].as<std::string>();
     std::string mode = vm["mode"].as<std::string>();
-    bool is_cross = (mode == "cross");
+    bool is_cross  = (mode == "cross");
+    bool need_cross = is_cross || num_layers > 1;
+
+    auto weight_path = [&](const std::string &short_name, const std::string &cli_arg,
+                            int layer) -> std::string {
+        if (!layers_dir.empty())
+            return layers_dir + "/layer_" + std::to_string(layer) + "/" + short_name;
+        return vm[cli_arg].as<std::string>();
+    };
 
     const std::string BASE = "..";
     auto xclbin_path = [&](const std::string &name) {
@@ -301,8 +332,7 @@ int main(int argc, const char *argv[]) {
     KernelSpec spec_rms_norm, spec_gemm_q, spec_gemm_out;
     KernelSpec spec_gemm_ffn_up, spec_gemm_ffn_down, spec_silu, spec_rope_5h;
     KernelSpec spec_gemm_kv_self, spec_attn_self_score, spec_attn_self_value;
-    KernelSpec spec_gemm_kv_cross, spec_attn_cross_score, spec_attn_cross_value;
-    KernelSpec spec_softmax_cross;
+    KernelSpec spec_gemm_kv_cross, spec_fa_cross;
 
     // Always loaded
     spec_rms_norm.preload  (device, xclbin_path("rms_norm"),        insts_path("rms_norm"));
@@ -314,16 +344,12 @@ int main(int argc, const char *argv[]) {
     spec_rope_5h.preload   (device, "../rope/fused_5h.prj/build/final.xclbin",
                                     "../rope/fused_5h.prj/insts.txt");
 
-    if (!is_cross) {
-        spec_gemm_kv_self.preload    (device, xclbin_path("gemm_kv_self"),          insts_path("gemm_kv_self"));
-        spec_attn_self_score.preload (device, xclbin_path("gemm_attn_self_score"),   insts_path("gemm_attn_self_score"));
-        spec_attn_self_value.preload (device, xclbin_path("gemm_attn_self_value"),   insts_path("gemm_attn_self_value"));
-    } else {
-        spec_gemm_kv_cross.preload    (device, xclbin_path("gemm_kv_cross"),         insts_path("gemm_kv_cross"));
-        spec_attn_cross_score.preload (device, xclbin_path("gemm_attn_cross_score"), insts_path("gemm_attn_cross_score"));
-        spec_attn_cross_value.preload (device, xclbin_path("gemm_attn_cross_value"), insts_path("gemm_attn_cross_value"));
-        spec_softmax_cross.preload    (device, xclbin_path("softmax_cross"),          insts_path("softmax_cross"));
-    }
+    // Always load all specs — needed when both self and cross occur in multi-layer mode
+    spec_gemm_kv_self.preload    (device, xclbin_path("gemm_kv_self"),          insts_path("gemm_kv_self"));
+    spec_attn_self_score.preload (device, xclbin_path("gemm_attn_self_score"),  insts_path("gemm_attn_self_score"));
+    spec_attn_self_value.preload (device, xclbin_path("gemm_attn_self_value"),  insts_path("gemm_attn_self_value"));
+    spec_gemm_kv_cross.preload   (device, xclbin_path("gemm_kv_cross"),         insts_path("gemm_kv_cross"));
+    spec_fa_cross.preload        (device, xclbin_path("flash_attn_cross"),       insts_path("flash_attn_cross"));
 
     if (verbosity >= 1) std::cout << "All specs loaded.\n";
 
@@ -336,6 +362,18 @@ int main(int argc, const char *argv[]) {
     }
     if (verbosity >= 1)
         std::cout << "Data group IDs: slot3=" << g3 << " slot4=" << g4 << " slot5=" << g5 << "\n";
+
+    int fa_g3 = g3, fa_g4 = g4, fa_g5 = g5, fa_g7 = g4;
+    if (need_cross) {
+        ActiveKernel tmp(device, spec_fa_cross);
+        fa_g3 = tmp.k.group_id(3);
+        fa_g4 = tmp.k.group_id(4);
+        fa_g5 = tmp.k.group_id(5);
+        fa_g7 = tmp.k.group_id(7);
+        if (verbosity >= 1)
+            std::cout << "FA cross group IDs: slot3=" << fa_g3 << " slot4=" << fa_g4
+                      << " slot5=" << fa_g5 << " slot7=" << fa_g7 << "\n";
+    }
 
     // ---- Allocate BOs ----
     auto bo_rms_in     = make_bo(device, g3, SZ_NORM_TILE);
@@ -358,17 +396,19 @@ int main(int argc, const char *argv[]) {
     auto bo_ctx_head   = make_bo(device, g4, SZ_CTX_HEAD);
     auto bo_V_head_self = make_bo(device, g5, SZ_V_HEAD_SELF);
 
-    // Cross-attn specific
-    auto bo_text_k      = make_bo(device, g3, SZ_KV_CROSS_IN);
-    auto bo_text_v      = make_bo(device, g3, SZ_KV_CROSS_IN);
-    auto bo_key_cross   = make_bo(device, g4, SZ_KV_CROSS_OUT);
-    auto bo_val_cross   = make_bo(device, g4, SZ_KV_CROSS_OUT);
-    auto bo_Wk_cross    = make_bo(device, g5, SZ_WKV_CROSS);
-    auto bo_Wv_cross    = make_bo(device, g5, SZ_WKV_CROSS);
-    auto bo_score_cross = make_bo(device, g4, SZ_SCORE_CROSS);
-    auto bo_K_head_T_cross = make_bo(device, g5, SZ_K_HEAD_T_CROSS);
-    auto bo_weight_cross = make_bo(device, g4, SZ_SCORE_CROSS);
-    auto bo_V_head_cross = make_bo(device, g5, SZ_V_HEAD_CROSS);
+    // Cross-attn specific (gemm_kv_cross uses standard group IDs)
+    auto bo_text_k    = make_bo(device, g3, SZ_KV_CROSS_IN);
+    auto bo_text_v    = make_bo(device, g3, SZ_KV_CROSS_IN);
+    auto bo_key_cross = make_bo(device, g4, SZ_KV_CROSS_OUT);
+    auto bo_val_cross = make_bo(device, g4, SZ_KV_CROSS_OUT);
+    auto bo_Wk_cross  = make_bo(device, g5, SZ_WKV_CROSS);
+    auto bo_Wv_cross  = make_bo(device, g5, SZ_WKV_CROSS);
+
+    // Flash attention cross-attention BOs (use FA kernel's group IDs; minimal if never cross)
+    auto bo_fa_cross_QV    = make_bo(device, fa_g3, need_cross ? SZ_FA_CROSS_QV : 4);
+    auto bo_fa_cross_O     = make_bo(device, fa_g4, need_cross ? SZ_FA_CROSS_O : 4);
+    auto bo_fa_cross_KT    = make_bo(device, fa_g5, need_cross ? SZ_FA_CROSS_KT : 4);
+    auto bo_fa_cross_trace = make_bo(device, fa_g7, 4);
 
     // Output projection
     auto bo_ctx_full   = make_bo(device, g3, SZ_CTX_FULL);    // [32,960]
@@ -394,32 +434,11 @@ int main(int argc, const char *argv[]) {
     // Input
     auto bo_input = make_bo(device, g3, SZ_FULL_EMBD);
 
-    // ---- Load weights ----
-    if (verbosity >= 1) std::cout << "Loading weights...\n";
-    load_to_bo(bo_W_norm_1, vm["W_norm_1"].as<std::string>(), SZ_NORM_W);
-    load_to_bo(bo_W_norm_2, vm["W_norm_2"].as<std::string>(), SZ_NORM_W);
-    load_to_bo(bo_Wq,       vm["Wq"].as<std::string>(),       SZ_WQ);
-    load_to_bo(bo_Wo,       vm["Wo"].as<std::string>(),       SZ_WO);
-    load_to_bo(bo_W_gate,   vm["W_gate"].as<std::string>(),   SZ_W_FFN_UP);
-    load_to_bo(bo_W_up,     vm["W_up"].as<std::string>(),     SZ_W_FFN_UP);
-
-    if (!is_cross) {
-        load_to_bo(bo_Wk_self, vm["Wk"].as<std::string>(), SZ_WKV_SELF);
-        load_to_bo(bo_Wv_self, vm["Wv"].as<std::string>(), SZ_WKV_SELF);
-    } else {
-        load_to_bo(bo_Wk_cross, vm["Wk"].as<std::string>(), SZ_WKV_CROSS);
-        load_to_bo(bo_Wv_cross, vm["Wv"].as<std::string>(), SZ_WKV_CROSS);
-        if (!vm["text_k"].as<std::string>().empty())
-            load_to_bo(bo_text_k, vm["text_k"].as<std::string>(), SZ_KV_CROSS_IN);
-        if (!vm["text_v"].as<std::string>().empty())
-            load_to_bo(bo_text_v, vm["text_v"].as<std::string>(), SZ_KV_CROSS_IN);
-    }
-
-    // Host buffers
+    // Host buffers (key/val sized for max of self [32,320] and cross [128,320])
     std::vector<uint16_t> residual_host(SEQ * EMBD, 0);
     std::vector<uint16_t> normed_host(SEQ * EMBD, 0);
-    std::vector<uint16_t> key_host(is_cross ? TEXT_SEQ * KV_DIM : SEQ * KV_DIM, 0);
-    std::vector<uint16_t> val_host(is_cross ? TEXT_SEQ * KV_DIM : SEQ * KV_DIM, 0);
+    std::vector<uint16_t> key_host(TEXT_SEQ * KV_DIM, 0);
+    std::vector<uint16_t> val_host(TEXT_SEQ * KV_DIM, 0);
     std::vector<uint16_t> ctx_full_host(SEQ * Q_H * HEAD_DIM, 0);
     std::vector<uint16_t> gate_proj_host(SEQ * FFN_HID, 0);
     std::vector<uint16_t> up_proj_host(SEQ * FFN_HID, 0);
@@ -467,10 +486,38 @@ int main(int argc, const char *argv[]) {
         }
     };
 
-    auto run_forward = [&]() {
+    auto run_forward = [&](int layer = 0, bool first_layer = true, bool cross_layer = false) {
+        // ---- Load weights for this layer ----
+        load_to_bo(bo_W_norm_1, weight_path("wn1.data",   "W_norm_1", layer), SZ_NORM_W);
+        load_to_bo(bo_W_norm_2, weight_path("wn2.data",   "W_norm_2", layer), SZ_NORM_W);
+        load_to_bo(bo_Wq,       weight_path("wq.data",    "Wq",       layer), SZ_WQ);
+        load_to_bo(bo_Wo,       weight_path("wo.data",    "Wo",       layer), SZ_WO);
+        load_to_bo(bo_W_gate,   weight_path("wgate.data", "W_gate",   layer), SZ_W_FFN_UP);
+        load_to_bo(bo_W_up,     weight_path("wup.data",   "W_up",     layer), SZ_W_FFN_UP);
+        if (!cross_layer) {
+            load_to_bo(bo_Wk_self, weight_path("wk.data",  "Wk", layer), SZ_WKV_SELF);
+            load_to_bo(bo_Wv_self, weight_path("wv.data",  "Wv", layer), SZ_WKV_SELF);
+        } else {
+            load_to_bo(bo_Wk_cross, weight_path("wkc.data", "Wk", layer), SZ_WKV_CROSS);
+            load_to_bo(bo_Wv_cross, weight_path("wvc.data", "Wv", layer), SZ_WKV_CROSS);
+            // KV: from kv-dir (multi-layer) or CLI args (single-layer)
+            std::string tk_path, tv_path;
+            if (!kv_dir.empty()) {
+                tk_path = kv_dir + "/layer_" + std::to_string(layer) + "/key.data";
+                tv_path = kv_dir + "/layer_" + std::to_string(layer) + "/val.data";
+            } else {
+                tk_path = vm["text_k"].as<std::string>();
+                tv_path = vm["text_v"].as<std::string>();
+            }
+            if (!tk_path.empty()) load_to_bo(bo_text_k, tk_path, SZ_KV_CROSS_IN);
+            if (!tv_path.empty()) load_to_bo(bo_text_v, tv_path, SZ_KV_CROSS_IN);
+        }
+
         // ---- Step 1: Load input → residual ----
-        load_to_bo(bo_input, vm["input"].as<std::string>(), SZ_FULL_EMBD);
-        memcpy(residual_host.data(), bo_input.map<uint16_t*>(), SZ_FULL_EMBD);
+        if (first_layer) {
+            load_to_bo(bo_input, vm["input"].as<std::string>(), SZ_FULL_EMBD);
+            memcpy(residual_host.data(), bo_input.map<uint16_t*>(), SZ_FULL_EMBD);
+        }
 
         // ---- Step 2: RMSNorm 1 (1 call: SEQ=32=NORM_SEQ_TILE) ----
         {
@@ -491,7 +538,7 @@ int main(int argc, const char *argv[]) {
         }
         bo_query.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-        if (!is_cross) {
+        if (!cross_layer) {
             // ---- SELF-ATTENTION ----
 
             // Steps 4-5: GEMM Wk, Wv (self)
@@ -607,57 +654,36 @@ int main(int argc, const char *argv[]) {
                     q_map[i] = f32_to_bf16(q_f32[i]);
             }
 
-            // Scale query
+            // FA handles scaling internally — no manual Q scale needed
+
+            // Per-head cross-attention via flash attention (15 heads, 1 context switch)
             {
-                uint16_t *q_map = bo_query.map<uint16_t*>();
-                for (int i = 0; i < SEQ * Q_H * HEAD_DIM; i++) {
-                    float v = bf16_to_f32(q_map[i]) * ATTN_SCALE;
-                    q_map[i] = f32_to_bf16(v);
+                ActiveKernel ak(device, spec_fa_cross);
+                uint16_t *fa_qv_map = bo_fa_cross_QV.map<uint16_t*>();
+                uint16_t *fa_o_map  = bo_fa_cross_O.map<uint16_t*>();
+                uint16_t *q_map     = bo_query.map<uint16_t*>();
+
+                for (int h = 0; h < Q_H; h++) {
+                    int kv_idx = h * KV_H / Q_H;
+
+                    // K_T [64, 128] from key_host [128, 320]
+                    std::vector<uint16_t> K_tmp(TEXT_SEQ * HEAD_DIM);
+                    extract_head(K_tmp.data(), key_host.data(), kv_idx, KV_H, TEXT_SEQ);
+                    transpose_head(bo_fa_cross_KT.map<uint16_t*>(), K_tmp.data(), TEXT_SEQ);
+                    bo_fa_cross_KT.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+                    // Pack Q[32,64] at offset 0, V[128,64] at offset SEQ*HEAD_DIM=2048
+                    extract_head(fa_qv_map, q_map, h, Q_H, SEQ);
+                    extract_head(fa_qv_map + SEQ * HEAD_DIM, val_host.data(), kv_idx, KV_H, TEXT_SEQ);
+                    bo_fa_cross_QV.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+                    ak.run_fa(bo_fa_cross_QV, bo_fa_cross_O, bo_fa_cross_KT, bo_fa_cross_trace);
+                    bo_fa_cross_O.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+                    for (int s = 0; s < SEQ; s++)
+                        memcpy(ctx_full_host.data() + s * Q_H * HEAD_DIM + h * HEAD_DIM,
+                               fa_o_map + s * HEAD_DIM, HEAD_DIM * sizeof(uint16_t));
                 }
-            }
-
-            // Per-head cross-attention (15 heads, Q[32,64] × K_T[64,128] → [32,128])
-            for (int h = 0; h < Q_H; h++) {
-                int kv_idx = h * KV_H / Q_H;
-                uint16_t *q_map = bo_query.map<uint16_t*>();
-
-                extract_head(bo_Q_head.map<uint16_t*>(), q_map, h, Q_H, SEQ);
-                bo_Q_head.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-                // K_head_T: [TEXT_SEQ=128, HEAD_DIM] → [HEAD_DIM, TEXT_SEQ]
-                std::vector<uint16_t> K_tmp(TEXT_SEQ * HEAD_DIM);
-                extract_head(K_tmp.data(), key_host.data(), kv_idx, KV_H, TEXT_SEQ);
-                transpose_head(bo_K_head_T_cross.map<uint16_t*>(), K_tmp.data(), TEXT_SEQ);
-                bo_K_head_T_cross.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-                {
-                    ActiveKernel ak(device, spec_attn_cross_score);
-                    ak.run3(bo_Q_head, bo_score_cross, bo_K_head_T_cross);
-                }
-                bo_score_cross.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-                // NPU unmasked softmax [32,128]
-                bo_score_cross.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-                {
-                    ActiveKernel ak(device, spec_softmax_cross);
-                    ak.run2(bo_score_cross, bo_weight_cross);
-                }
-                bo_weight_cross.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-                // V_head: [TEXT_SEQ, HEAD_DIM] = [128, 64]
-                extract_head(bo_V_head_cross.map<uint16_t*>(), val_host.data(), kv_idx, KV_H, TEXT_SEQ);
-                bo_V_head_cross.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-                {
-                    ActiveKernel ak(device, spec_attn_cross_value);
-                    ak.run3(bo_weight_cross, bo_ctx_head, bo_V_head_cross);
-                }
-                bo_ctx_head.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-                uint16_t *ctx_map = bo_ctx_head.map<uint16_t*>();
-                for (int s = 0; s < SEQ; s++)
-                    memcpy(ctx_full_host.data() + s * Q_H * HEAD_DIM + h * HEAD_DIM,
-                           ctx_map + s * HEAD_DIM, HEAD_DIM * sizeof(uint16_t));
             }
         }
 
@@ -739,7 +765,7 @@ int main(int argc, const char *argv[]) {
         // ---- Step 13: FFN Down (8 chunks of K=256) ----
         std::fill(ffn_out_f32.begin(), ffn_out_f32.end(), 0.0f);
         {
-            std::ifstream wdown_f(vm["W_down"].as<std::string>(), std::ios::binary);
+            std::ifstream wdown_f(weight_path("wdown.data", "W_down", layer), std::ios::binary);
             if (!wdown_f) { std::cerr << "Cannot open W_down\n"; exit(1); }
 
             ActiveKernel ak(device, spec_gemm_ffn_down);
@@ -772,16 +798,29 @@ int main(int argc, const char *argv[]) {
         }
     };
 
-    if (verbosity >= 1) std::cout << "Warmup run...\n";
-    run_forward();
+    if (num_layers == 1 && layers_dir.empty()) {
+        if (verbosity >= 1) std::cout << "Warmup run...\n";
+        run_forward(0, true, is_cross);
 
-    auto t0 = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < n_iters; i++) run_forward();
-    auto t1 = std::chrono::high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < n_iters; i++) run_forward(0, true, is_cross);
+        auto t1 = std::chrono::high_resolution_clock::now();
 
-    float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
-    std::cout << "Action expert (" << mode << ") forward: " << total_ms / n_iters
-              << " ms/iter (avg over " << n_iters << " iters)\n";
+        float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
+        std::cout << "Action expert (" << mode << ") forward: " << total_ms / n_iters
+                  << " ms/iter (avg over " << n_iters << " iters)\n";
+    } else {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int l = 0; l < num_layers; l++) {
+            bool cross_l = (l % skip_val != 0);
+            run_forward(l, l == 0, cross_l);
+        }
+        auto t1 = std::chrono::high_resolution_clock::now();
+
+        float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
+        std::cout << "Action expert forward: " << total_ms << " ms total ("
+                  << num_layers << " layers, " << total_ms / num_layers << " ms/layer)\n";
+    }
 
     std::ofstream out_f(vm["output"].as<std::string>(), std::ios::binary);
     out_f.write(reinterpret_cast<const char*>(residual_host.data()),

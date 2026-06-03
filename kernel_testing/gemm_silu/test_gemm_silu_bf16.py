@@ -42,7 +42,7 @@ Pm, Pn, Pk = 8, 8, 12       # → Mt=4, Nt=256, Kt=64
 Mt, Nt    = M // Pm, N // Pn
 col_num, row_num = 4, 4
 
-SILU_CC   = os.path.join(os.path.dirname(__file__), "../../cc/bf16/silu_256_bf16.cc")
+SILU_CC   = os.path.join(os.path.dirname(__file__), "../../cc/bf16_vla/silu_256_bf16.cc")
 NP_DTYPE  = np_bfloat16
 
 assert M  % Pm == 0

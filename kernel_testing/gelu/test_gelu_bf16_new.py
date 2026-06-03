@@ -12,7 +12,7 @@ import numpy as np
 from allo.memory import Layout
 from allo.backend.aie.external_kernel import ExternalModule
 
-KERNEL_LIB_PATH = "../../cc/bf16_new/"
+KERNEL_LIB_PATH = "../../cc/bf16/"
 
 S  = Layout.Shard
 R  = Layout.Replicate

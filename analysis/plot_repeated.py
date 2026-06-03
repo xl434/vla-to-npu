@@ -16,7 +16,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_JSON = os.path.join(SCRIPT_DIR, "repeated_calls_data.json")
+DEFAULT_JSON = os.path.join(SCRIPT_DIR, "data", "repeated_calls_data.json")
 
 
 def main():
@@ -86,7 +86,7 @@ def main():
     )
     plt.tight_layout()
 
-    out_path = os.path.join(SCRIPT_DIR, "repeated_calls.png")
+    out_path = os.path.join(SCRIPT_DIR, "plots", "repeated_calls.png")
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     print(f"Plot saved to: {out_path}")
 

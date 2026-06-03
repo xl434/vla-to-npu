@@ -52,16 +52,7 @@ static constexpr int FFN_DOWN_K_CHUNK = EMBD;        // 768 (reuse gemm_embd_emb
 static constexpr int FFN_DOWN_K_CHUNKS = FFN_HID / FFN_DOWN_K_CHUNK;  // 4
 
 static constexpr int NORM_SEQ_TILE = 32;   // layer_norm processes 32 rows per call
-static constexpr int GELU_SEQ_TILE = 32;   // gelu processes 32 rows per call
-
-// Softmax physical layout: score[SEQ,SEQ] as [2*SEQ, SEQ/2] physical
-static constexpr int SOFTMAX_PHYS_COLS     = SEQ / 2;       // 512
-static constexpr int SOFTMAX_PHYS_ROWS_PER = 2;             // 2 physical rows per logical row
-static constexpr int SOFTMAX_BATCH_PHYS    = 64;            // 64 physical rows per batch
-static constexpr int SOFTMAX_NUM_BATCHES   = SEQ / (SOFTMAX_BATCH_PHYS / SOFTMAX_PHYS_ROWS_PER);  // 32
-
-// Attention scale: 1/sqrt(HEAD_DIM=64) = 0.125
-static constexpr float ATTN_SCALE = 0.125f;
+static constexpr int GELU_SEQ_TILE = 16;   // gelu processes 16 rows per call (vectorized Padé, 7/7 degree)
 
 // ============================================================
 // Buffer sizes
@@ -71,8 +62,11 @@ static constexpr size_t SZ_NORM_W    = EMBD * 2;                           // [7
 static constexpr size_t SZ_NORM_TILE = (size_t)(NORM_SEQ_TILE + 1) * EMBD * 2; // packed: [33,768] bf16 (input+weight)
 static constexpr size_t SZ_Q_HEAD   = (size_t)SEQ  * HEAD_DIM * 2;        // [1024,64] bf16
 static constexpr size_t SZ_K_HEAD_T = (size_t)HEAD_DIM * SEQ * 2;         // [64,1024] bf16
-static constexpr size_t SZ_SCORE    = (size_t)SEQ  * SEQ * 2;             // [1024,1024] bf16
-static constexpr size_t SZ_SCORE_F32_TILE = (size_t)SOFTMAX_BATCH_PHYS * SOFTMAX_PHYS_COLS * 4;  // [64,512] f32
+// FA (Q_tile=SEQ=1024): slot3=Q[1024,64]+V[1024,64] packed, slot4=O[1024,64], slot5=K_T[64,1024]
+// One call per head (12 total); scale=0.125 applied internally.
+static constexpr size_t SZ_FA_QV   = 2 * (size_t)SEQ * HEAD_DIM * 2; // Q+V packed = 262144 bytes
+static constexpr size_t SZ_FA_O    = (size_t)SEQ * HEAD_DIM * 2;      // [1024,64] bf16 = 131072 bytes
+// slot 5: K_T[64,1024] = SZ_K_HEAD_T = 131072 bytes
 static constexpr size_t SZ_FFN_UP   = (size_t)SEQ  * FFN_HID * 2;        // [1024,3072] bf16
 static constexpr size_t SZ_FFN_TILE = (size_t)GELU_SEQ_TILE * FFN_HID * 2;  // [32,3072] bf16
 static constexpr size_t SZ_WQ       = (size_t)EMBD * EMBD * 2;            // [768,768] bf16
@@ -153,6 +147,21 @@ struct ActiveKernel {
         r.start();
         r.wait();
     }
+
+    // flash_attn: slot3=QV, slot4=O, slot5=K_T, arg6=trace (always required by FA kernel)
+    void run_fa(xrt::bo &b3, xrt::bo &b4, xrt::bo &b5, xrt::bo &b6) {
+        xrt::run r(k);
+        r.set_arg(0, (unsigned int)3);
+        r.set_arg(1, bo_instr);
+        r.set_arg(2, instr_size);
+        r.set_arg(3, b3);
+        r.set_arg(4, b4);
+        r.set_arg(5, b5);
+        r.set_arg(6, b6);
+        r.start();
+        r.wait();
+    }
+
 };
 
 // ============================================================
@@ -203,64 +212,29 @@ static void transpose_head(uint16_t *dst, const uint16_t *src) {
             dst[d * SEQ + s] = src[s * HEAD_DIM + d];
 }
 
-// Scale Q head in-place: bf16 → f32 → * scale → bf16
-static void scale_bf16_inplace(uint16_t *buf, int n, float scale) {
-    for (int i = 0; i < n; i++) {
-        float v = bf16_to_f32(buf[i]) * scale;
-        buf[i]  = f32_to_bf16(v);
-    }
-}
-
-// Unpack bf16 score tile [SEQ,SEQ] → float32 physical tile [64,512] for softmax batch b
-// Physical layout: each logical row r_log maps to 2 physical rows (left/right 512 cols)
-static void unpack_score_tile(const uint16_t *score_bf16, float *score_f32_tile, int batch) {
-    for (int rp = 0; rp < SOFTMAX_BATCH_PHYS; rp++) {
-        int rl   = rp / 2;    // logical row within batch
-        int half = rp % 2;    // 0 = left 512 cols, 1 = right 512 cols
-        int global_rl = batch * (SOFTMAX_BATCH_PHYS / 2) + rl;
-        for (int c = 0; c < SOFTMAX_PHYS_COLS; c++) {
-            int global_c = half * SOFTMAX_PHYS_COLS + c;
-            score_f32_tile[rp * SOFTMAX_PHYS_COLS + c] =
-                bf16_to_f32(score_bf16[global_rl * SEQ + global_c]);
-        }
-    }
-}
-
-// Repack float32 physical tile [64,512] → bf16 weight [SEQ,SEQ] for batch b
-static void repack_weight_tile(const float *weight_f32_tile, uint16_t *attn_weight_bf16, int batch) {
-    for (int rp = 0; rp < SOFTMAX_BATCH_PHYS; rp++) {
-        int rl   = rp / 2;
-        int half = rp % 2;
-        int global_rl = batch * (SOFTMAX_BATCH_PHYS / 2) + rl;
-        for (int c = 0; c < SOFTMAX_PHYS_COLS; c++) {
-            int global_c = half * SOFTMAX_PHYS_COLS + c;
-            attn_weight_bf16[global_rl * SEQ + global_c] =
-                f32_to_bf16(weight_f32_tile[rp * SOFTMAX_PHYS_COLS + c]);
-        }
-    }
-}
-
 // ============================================================
 // Main
 // ============================================================
 int main(int argc, const char *argv[]) {
     po::options_description opts("Vision encoder forward pass");
     opts.add_options()
-        ("help,h",     "help")
-        ("input",      po::value<std::string>()->required(),            "[1024,768] bf16 input")
-        ("W_norm_1",   po::value<std::string>()->required(),            "[768] bf16 layer norm weight 1")
-        ("b_norm_1",   po::value<std::string>()->required(),            "[768] bf16 layer norm bias 1")
-        ("Wq",         po::value<std::string>()->required(),            "[768,768] bf16")
-        ("Wk",         po::value<std::string>()->required(),            "[768,768] bf16")
-        ("Wv",         po::value<std::string>()->required(),            "[768,768] bf16")
-        ("Wo",         po::value<std::string>()->required(),            "[768,768] bf16")
-        ("W_up",       po::value<std::string>()->required(),            "[768,3072] bf16 FFN up weight")
-        ("W_norm_2",   po::value<std::string>()->required(),            "[768] bf16 layer norm weight 2")
-        ("b_norm_2",   po::value<std::string>()->required(),            "[768] bf16 layer norm bias 2")
-        ("W_down",     po::value<std::string>()->required(),            "[3072,768] bf16 FFN down weight")
-        ("output",     po::value<std::string>()->default_value("output.data"), "[1024,768] bf16 output")
-        ("iters,n",    po::value<int>()->default_value(1),              "number of forward passes")
-        ("verbosity,v",po::value<int>()->default_value(0),              "verbosity");
+        ("help,h",       "help")
+        ("input",        po::value<std::string>()->required(),            "[1024,768] bf16 input")
+        ("W_norm_1",     po::value<std::string>()->default_value(""),     "[768] bf16 layer norm weight 1")
+        ("b_norm_1",     po::value<std::string>()->default_value(""),     "[768] bf16 layer norm bias 1")
+        ("Wq",           po::value<std::string>()->default_value(""),     "[768,768] bf16")
+        ("Wk",           po::value<std::string>()->default_value(""),     "[768,768] bf16")
+        ("Wv",           po::value<std::string>()->default_value(""),     "[768,768] bf16")
+        ("Wo",           po::value<std::string>()->default_value(""),     "[768,768] bf16")
+        ("W_up",         po::value<std::string>()->default_value(""),     "[768,3072] bf16 FFN up weight")
+        ("W_norm_2",     po::value<std::string>()->default_value(""),     "[768] bf16 layer norm weight 2")
+        ("b_norm_2",     po::value<std::string>()->default_value(""),     "[768] bf16 layer norm bias 2")
+        ("W_down",       po::value<std::string>()->default_value(""),     "[3072,768] bf16 FFN down weight")
+        ("output",       po::value<std::string>()->default_value("output.data"), "[1024,768] bf16 output")
+        ("num-layers,L", po::value<int>()->default_value(1),              "number of transformer layers")
+        ("layers-dir",   po::value<std::string>()->default_value(""),     "dir with layer_0/,layer_1/,... weight subdirs")
+        ("iters,n",      po::value<int>()->default_value(1),              "number of forward passes (single-layer bench)")
+        ("verbosity,v",  po::value<int>()->default_value(0),              "verbosity");
 
     po::variables_map vm;
     try {
@@ -271,8 +245,18 @@ int main(int argc, const char *argv[]) {
         std::cerr << e.what() << "\n" << opts; return 1;
     }
 
-    int verbosity = vm["verbosity"].as<int>();
-    int n_iters   = vm["iters"].as<int>();
+    int verbosity  = vm["verbosity"].as<int>();
+    int n_iters    = vm["iters"].as<int>();
+    int num_layers = vm["num-layers"].as<int>();
+    std::string layers_dir = vm["layers-dir"].as<std::string>();
+
+    // Resolve weight file: single-layer mode uses CLI args; multi-layer uses layers-dir.
+    auto weight_path = [&](const std::string &short_name, const std::string &cli_arg,
+                            int layer) -> std::string {
+        if (!layers_dir.empty())
+            return layers_dir + "/layer_" + std::to_string(layer) + "/" + short_name;
+        return vm[cli_arg].as<std::string>();
+    };
 
     // Paths to kernels (relative to vision_block/unified.prj/)
     const std::string BASE = "..";
@@ -286,29 +270,38 @@ int main(int argc, const char *argv[]) {
     if (verbosity >= 1) std::cout << "Preloading kernel specs...\n";
     auto device = xrt::device(0);
 
-    KernelSpec spec_layer_norm, spec_gemm_embd, spec_gemm_hid, spec_gemm_head_seq;
-    KernelSpec spec_gemm_score, spec_softmax, spec_gelu;
+    KernelSpec spec_layer_norm, spec_gemm_embd, spec_gemm_hid, spec_gelu, spec_flash_attn;
 
     spec_layer_norm.preload (device, xclbin_path("layer_norm_bf16"),    insts_path("layer_norm_bf16"));
     spec_gemm_embd.preload  (device, xclbin_path("gemm_embd_embd_bf16"),insts_path("gemm_embd_embd_bf16"));
     spec_gemm_hid.preload   (device, xclbin_path("gemm_hid_embd_bf16"), insts_path("gemm_hid_embd_bf16"));
-    spec_gemm_head_seq.preload(device,xclbin_path("gemm_head_seq_bf16"),insts_path("gemm_head_seq_bf16"));
-    spec_gemm_score.preload (device, xclbin_path("gemm_score_bf16"),    insts_path("gemm_score_bf16"));
-    spec_softmax.preload    (device, xclbin_path("softmax_f32"),        insts_path("softmax_f32"));
-    spec_gelu.preload       (device, xclbin_path("gelu_bf16"),          insts_path("gelu_bf16"));
+    spec_gelu.preload       (device, xclbin_path("gelu_bf16_ffn"),      insts_path("gelu_bf16_ffn"));
+    spec_flash_attn.preload (device, xclbin_path("flash_attn_vit"),     insts_path("flash_attn_vit"));
 
     if (verbosity >= 1) std::cout << "All specs loaded.\n";
 
-    // Discover group IDs
+    // Discover group IDs (each xclbin may assign different memory groups)
     int g3, g4, g5;
+    int fa_g3, fa_g4, fa_g5, g7;
+    int gelu_g3, gelu_g4;
     {
         ActiveKernel tmp(device, spec_layer_norm);
         g3 = tmp.k.group_id(3);
         g4 = tmp.k.group_id(4);
         g5 = tmp.k.group_id(5);
     }
-    if (verbosity >= 1)
-        std::cout << "Data group IDs: slot3=" << g3 << " slot4=" << g4 << " slot5=" << g5 << "\n";
+    {
+        ActiveKernel tmp(device, spec_flash_attn);
+        fa_g3 = tmp.k.group_id(3);
+        fa_g4 = tmp.k.group_id(4);
+        fa_g5 = tmp.k.group_id(5);
+        g7    = tmp.k.group_id(7);
+    }
+    {
+        ActiveKernel tmp(device, spec_gelu);
+        gelu_g3 = tmp.k.group_id(3);
+        gelu_g4 = tmp.k.group_id(4);
+    }
 
     // ---- Allocate all BOs ----
 
@@ -331,19 +324,11 @@ int main(int argc, const char *argv[]) {
     auto bo_Wv     = make_bo(device, g5, SZ_WQ);
     auto bo_Wo     = make_bo(device, g5, SZ_WQ);
 
-    // gemm_score: slot3=Q_head, slot4=score, slot5=K_head_T
-    auto bo_Q_head   = make_bo(device, g3, SZ_Q_HEAD);
-    auto bo_score    = make_bo(device, g4, SZ_SCORE);
-    auto bo_K_head_T = make_bo(device, g5, SZ_K_HEAD_T);
-
-    // softmax: slot3=score_f32_tile[64,512], slot4=weight_f32_tile[64,512]
-    auto bo_score_f32_tile  = make_bo(device, g3, SZ_SCORE_F32_TILE);
-    auto bo_weight_f32_tile = make_bo(device, g4, SZ_SCORE_F32_TILE);
-
-    // gemm_head_seq (attn value): slot3=attn_weight[1024,1024], slot4=ctx_head[1024,64], slot5=V_head[1024,64]
-    auto bo_attn_weight = make_bo(device, g3, SZ_SCORE);    // [1024,1024] bf16
-    auto bo_ctx_head    = make_bo(device, g4, SZ_Q_HEAD);   // [1024,64] bf16
-    auto bo_V_head      = make_bo(device, g5, SZ_Q_HEAD);   // [1024,64] bf16
+    // flash_attn: slot3=QV packed, slot4=O, slot5=K_T, arg6=trace (mandatory for FA kernel)
+    auto bo_fa_QV    = make_bo(device, fa_g3, SZ_FA_QV);   // Q+V packed = 139264 bytes
+    auto bo_fa_O     = make_bo(device, fa_g4, SZ_FA_O);    // [64,64] bf16
+    auto bo_fa_K_T   = make_bo(device, fa_g5, SZ_K_HEAD_T);// [64,1024] bf16
+    auto bo_fa_trace = make_bo(device, g7,    4);           // minimal trace (always required)
 
     // gemm_embd_embd again for Wo output
     auto bo_attn_value = make_bo(device, g3, SZ_FULL);      // [1024,768] assembled
@@ -354,8 +339,8 @@ int main(int argc, const char *argv[]) {
     auto bo_W_up       = make_bo(device, g5, SZ_W_UP);
 
     // gelu: slot3=[32,3072], slot4=[32,3072]
-    auto bo_gelu_in    = make_bo(device, g3, SZ_FFN_TILE);
-    auto bo_gelu_out   = make_bo(device, g4, SZ_FFN_TILE);
+    auto bo_gelu_in    = make_bo(device, gelu_g3, SZ_FFN_TILE);
+    auto bo_gelu_out   = make_bo(device, gelu_g4, SZ_FFN_TILE);
 
     // gemm_embd_embd for FFN down (reused 4 times)
     auto bo_ffn_in_chunk  = make_bo(device, g3, SZ_W_DOWN_CHUNK);  // [768,768] (act chunk reinterpreted as [SEQ_CHUNK*768])
@@ -371,33 +356,53 @@ int main(int argc, const char *argv[]) {
 
     // ---- Load weights (constant across forward passes) ----
     if (verbosity >= 1) std::cout << "Loading weights...\n";
-    load_file_to_bo(bo_W_norm_1,  vm["W_norm_1"].as<std::string>(), SZ_NORM_W);
-    load_file_to_bo(bo_b_norm_1,  vm["b_norm_1"].as<std::string>(), SZ_NORM_W);
-    load_file_to_bo(bo_Wq,        vm["Wq"].as<std::string>(),       SZ_WQ);
-    load_file_to_bo(bo_Wk,        vm["Wk"].as<std::string>(),       SZ_WQ);
-    load_file_to_bo(bo_Wv,        vm["Wv"].as<std::string>(),       SZ_WQ);
-    load_file_to_bo(bo_Wo,        vm["Wo"].as<std::string>(),       SZ_WQ);
-    load_file_to_bo(bo_W_up,      vm["W_up"].as<std::string>(),     SZ_W_UP);
-    load_file_to_bo(bo_W_norm_2,  vm["W_norm_2"].as<std::string>(), SZ_NORM_W);
-    load_file_to_bo(bo_b_norm_2,  vm["b_norm_2"].as<std::string>(), SZ_NORM_W);
-
-    // W_down is loaded in chunks below (per-call)
+    // Weights loaded per-layer inside run_forward(); W_down loaded in chunks per-call.
 
     // Host staging buffers
     std::vector<uint16_t> residual_host(SEQ * EMBD, 0);
     std::vector<uint16_t> normed_host(SEQ * EMBD, 0);
     std::vector<uint16_t> key_host(SEQ * EMBD, 0);
     std::vector<uint16_t> value_host(SEQ * EMBD, 0);
-    std::vector<uint16_t> attn_weight_host(SEQ * SEQ, 0);
     std::vector<uint16_t> attn_value_host(SEQ * EMBD, 0);
     std::vector<uint16_t> ffn_up_host(SEQ * FFN_HID, 0);
     std::vector<uint16_t> act_host(SEQ * FFN_HID, 0);
     std::vector<float>    ffn_out_f32(SEQ * EMBD, 0.0f);
 
-    auto run_forward = [&]() {
-        // ---- Step 1: Load input → residual ----
-        load_file_to_bo(bo_input, vm["input"].as<std::string>(), SZ_FULL);
-        memcpy(residual_host.data(), bo_input.map<uint16_t*>(), SZ_FULL);
+    // Per-head host buffers for flash attention pre-pass.
+    // K_T and V are extracted once per head, reused across all 16 Q_tiles of that head.
+    std::vector<std::vector<uint16_t>> K_head_Ts_host(N_HEAD, std::vector<uint16_t>(HEAD_DIM * SEQ));
+    std::vector<std::vector<uint16_t>> V_heads_host(N_HEAD, std::vector<uint16_t>(SEQ * HEAD_DIM));
+
+    using Clock = std::chrono::high_resolution_clock;
+    auto ms_since = [](Clock::time_point t0) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+            Clock::now() - t0).count() / 1000.0f;
+    };
+    auto span_ms = [](Clock::time_point a, Clock::time_point b) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count() / 1000.0f;
+    };
+
+    auto run_forward = [&](int layer = 0, bool first_layer = true) {
+        auto p0 = Clock::now();
+
+        // Load per-layer weights (always, since different layers have different weights)
+        load_file_to_bo(bo_W_norm_1, weight_path("w1.data",    "W_norm_1", layer), SZ_NORM_W);
+        load_file_to_bo(bo_b_norm_1, weight_path("b1.data",    "b_norm_1", layer), SZ_NORM_W);
+        load_file_to_bo(bo_Wq,       weight_path("wq.data",    "Wq",       layer), SZ_WQ);
+        load_file_to_bo(bo_Wk,       weight_path("wk.data",    "Wk",       layer), SZ_WQ);
+        load_file_to_bo(bo_Wv,       weight_path("wv.data",    "Wv",       layer), SZ_WQ);
+        load_file_to_bo(bo_Wo,       weight_path("wo.data",    "Wo",       layer), SZ_WQ);
+        load_file_to_bo(bo_W_up,     weight_path("wup.data",   "W_up",     layer), SZ_W_UP);
+        load_file_to_bo(bo_W_norm_2, weight_path("w2.data",    "W_norm_2", layer), SZ_NORM_W);
+        load_file_to_bo(bo_b_norm_2, weight_path("b2.data",    "b_norm_2", layer), SZ_NORM_W);
+        auto p_wl = Clock::now();
+
+        // ---- Step 1: Load input → residual (first layer only) ----
+        if (first_layer) {
+            load_file_to_bo(bo_input, vm["input"].as<std::string>(), SZ_FULL);
+            memcpy(residual_host.data(), bo_input.map<uint16_t*>(), SZ_FULL);
+        }
+        auto p_input = Clock::now();
 
         // ---- Step 2: LayerNorm 1 — 32 tile calls ----
         // layer_norm slot3=packed[input[32,768]||weight[768]], slot4=normed_tile, slot5=bias
@@ -423,6 +428,7 @@ int main(int argc, const char *argv[]) {
         }
         memcpy(bo_normed.map<uint16_t*>(), normed_host.data(), SZ_FULL);
         bo_normed.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        auto p_n1 = Clock::now();
 
         // ---- Step 3-5: GEMM Wq, Wk, Wv ----
         {
@@ -438,67 +444,49 @@ int main(int argc, const char *argv[]) {
             bo_value.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
             memcpy(value_host.data(), bo_value.map<uint16_t*>(), SZ_FULL);
         }
+        auto p_qkv = Clock::now();
 
-        // ---- Step 6: Scale query by ATTN_SCALE (CPU) ----
+        // ---- Step 6-7: Flash attention — 1 hw_context, 12×16=192 dispatches ----
+        // FA handles the 0.125 scale internally; no pre-scaling of Q needed.
+        // CPU pre-pass: extract K_T and V for each head (reused across all 16 Q-tiles).
         uint16_t *query_map = bo_query.map<uint16_t*>();
-        scale_bf16_inplace(query_map, SEQ * EMBD, ATTN_SCALE);
-
-        // ---- Step 7: Per-head attention (12 heads) ----
-        for (int h = 0; h < N_HEAD; h++) {
-
-            // CPU: extract Q_head[1024,64] from query_scaled
-            extract_head(bo_Q_head.map<uint16_t*>(), query_map, h, N_HEAD);
-            bo_Q_head.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-            // CPU: extract K_head[1024,64] and transpose → K_head_T[64,1024]
-            std::vector<uint16_t> K_head_tmp(SEQ * HEAD_DIM);
-            extract_head(K_head_tmp.data(), key_host.data(), h, N_HEAD);
-            transpose_head(bo_K_head_T.map<uint16_t*>(), K_head_tmp.data());
-            bo_K_head_T.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-            // NPU: gemm_score → score[1024,1024]
-            {
-                ActiveKernel ak(device, spec_gemm_score);
-                ak.run3(bo_Q_head, bo_score, bo_K_head_T);
+        {
+            std::vector<uint16_t> K_tmp(SEQ * HEAD_DIM);
+            for (int h = 0; h < N_HEAD; h++) {
+                extract_head(K_tmp.data(), key_host.data(), h, N_HEAD);
+                transpose_head(K_head_Ts_host[h].data(), K_tmp.data());
+                extract_head(V_heads_host[h].data(), value_host.data(), h, N_HEAD);
             }
-            bo_score.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-            uint16_t *score_map = bo_score.map<uint16_t*>();
-
-            // Softmax (f32): 32 batches of [64 phys_rows, 512 phys_cols]
-            {
-                ActiveKernel ak(device, spec_softmax);
-                float *sf_in_map  = bo_score_f32_tile.map<float*>();
-                float *sf_out_map = bo_weight_f32_tile.map<float*>();
-
-                for (int b = 0; b < SOFTMAX_NUM_BATCHES; b++) {
-                    unpack_score_tile(score_map, sf_in_map, b);
-                    bo_score_f32_tile.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-                    ak.run2(bo_score_f32_tile, bo_weight_f32_tile);
-                    bo_weight_f32_tile.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-                    repack_weight_tile(sf_out_map, attn_weight_host.data(), b);
-                }
-            }
-            memcpy(bo_attn_weight.map<uint16_t*>(), attn_weight_host.data(), SZ_SCORE);
-            bo_attn_weight.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-            // CPU: extract V_head[1024,64]
-            extract_head(bo_V_head.map<uint16_t*>(), value_host.data(), h, N_HEAD);
-            bo_V_head.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-            // NPU: gemm_head_seq → ctx_head[1024,64]
-            {
-                ActiveKernel ak(device, spec_gemm_head_seq);
-                ak.run3(bo_attn_weight, bo_ctx_head, bo_V_head);
-            }
-            bo_ctx_head.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-            // CPU: assemble ctx_head into attn_value_host[1024, 12*64]
-            uint16_t *ctx_map = bo_ctx_head.map<uint16_t*>();
-            for (int s = 0; s < SEQ; s++)
-                memcpy(attn_value_host.data() + s * EMBD + h * HEAD_DIM,
-                       ctx_map + s * HEAD_DIM,
-                       HEAD_DIM * sizeof(uint16_t));
         }
+
+        auto p_fa_pre = Clock::now();
+
+        // FA: 1 hw_context, 12 dispatches (one per head, full SEQ per call)
+        {
+            ActiveKernel ak(device, spec_flash_attn);
+            uint16_t *fa_qv_map = bo_fa_QV.map<uint16_t*>();
+            uint16_t *fa_o_map  = bo_fa_O.map<uint16_t*>();
+            for (int h = 0; h < N_HEAD; h++) {
+                // Pack K_T for this head into slot 5
+                memcpy(bo_fa_K_T.map<uint16_t*>(), K_head_Ts_host[h].data(), SZ_K_HEAD_T);
+                bo_fa_K_T.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+                // Pack Q[SEQ,HEAD_DIM] at offset 0 in slot 3
+                extract_head(fa_qv_map, query_map, h, N_HEAD);
+                // Pack V[SEQ,HEAD_DIM] at offset SEQ*HEAD_DIM in slot 3
+                memcpy(fa_qv_map + SEQ * HEAD_DIM,
+                       V_heads_host[h].data(), SZ_Q_HEAD);
+                bo_fa_QV.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+                ak.run_fa(bo_fa_QV, bo_fa_O, bo_fa_K_T, bo_fa_trace);
+                bo_fa_O.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+                // Scatter O[SEQ,HEAD_DIM] → attn_value_host[SEQ, EMBD]
+                for (int s = 0; s < SEQ; s++)
+                    memcpy(attn_value_host.data() + s * EMBD + h * HEAD_DIM,
+                           fa_o_map + s * HEAD_DIM,
+                           HEAD_DIM * sizeof(uint16_t));
+            }
+        }
+
+        auto p_fa = Clock::now();
 
         // ---- Step 8: GEMM Wo → x_out[1024,768] ----
         memcpy(bo_attn_value.map<uint16_t*>(), attn_value_host.data(), SZ_FULL);
@@ -508,6 +496,7 @@ int main(int argc, const char *argv[]) {
             ak.run3(bo_attn_value, bo_x_out, bo_Wo);
         }
         bo_x_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+        auto p_wo = Clock::now();
 
         // ---- Step 9: residual += x_out (CPU bf16 add) ----
         {
@@ -517,6 +506,7 @@ int main(int argc, const char *argv[]) {
                 residual_host[i] = f32_to_bf16(r);
             }
         }
+        auto p_res1 = Clock::now();
 
         // ---- Step 10: LayerNorm 2 — 32 tile calls ----
         {
@@ -540,6 +530,7 @@ int main(int argc, const char *argv[]) {
         }
         memcpy(bo_normed.map<uint16_t*>(), normed_host.data(), SZ_FULL);
         bo_normed.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        auto p_n2 = Clock::now();
 
         // ---- Step 11: GEMM W_up → ffn_up_x[1024,3072] ----
         {
@@ -548,45 +539,58 @@ int main(int argc, const char *argv[]) {
         }
         bo_ffn_up.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
         memcpy(ffn_up_host.data(), bo_ffn_up.map<uint16_t*>(), SZ_FFN_UP);
+        auto p_up = Clock::now();
 
         // ---- Step 12: GELU — 32 tile calls ----
+        // Optimization: Allocate persistent BO for full [1024, 3072] GELU output
+        // to avoid host round-trip and per-tile sync overhead
+        auto bo_gelu_full = make_bo(device, gelu_g4, (size_t)SEQ * FFN_HID * 2);
+        uint16_t *gelu_full_host = (uint16_t*)malloc((size_t)SEQ * FFN_HID * 2);
         {
             ActiveKernel ak(device, spec_gelu);
             uint16_t *gin_map  = bo_gelu_in.map<uint16_t*>();
-            uint16_t *gout_map = bo_gelu_out.map<uint16_t*>();
             for (int t = 0; t < SEQ / GELU_SEQ_TILE; t++) {
                 memcpy(gin_map, ffn_up_host.data() + t * GELU_SEQ_TILE * FFN_HID,
                        GELU_SEQ_TILE * FFN_HID * sizeof(uint16_t));
                 bo_gelu_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
                 ak.run2(bo_gelu_in, bo_gelu_out);
                 bo_gelu_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-                memcpy(act_host.data() + t * GELU_SEQ_TILE * FFN_HID,
-                       gout_map, GELU_SEQ_TILE * FFN_HID * sizeof(uint16_t));
+                memcpy(gelu_full_host + t * GELU_SEQ_TILE * FFN_HID,
+                       bo_gelu_out.map<uint16_t*>(), GELU_SEQ_TILE * FFN_HID * sizeof(uint16_t));
             }
         }
+        // Now copy full result to device BO once
+        memcpy(bo_gelu_full.map<uint16_t*>(), gelu_full_host, (size_t)SEQ * FFN_HID * 2);
+        bo_gelu_full.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        // Keep gelu_full_host for GEMM_down chunk access (avoid extra sync)
+        auto p_gelu = Clock::now();
 
         // ---- Step 13: FFN Down (4 chunks), float32 accumulation ----
         std::fill(ffn_out_f32.begin(), ffn_out_f32.end(), 0.0f);
+        float fdn_disk_ms = 0.0f, fdn_gemm_ms = 0.0f;
         {
-            // Read W_down file in chunks
-            std::ifstream wdown_f(vm["W_down"].as<std::string>(), std::ios::binary);
+            std::ifstream wdown_f(weight_path("wdown.data", "W_down", layer), std::ios::binary);
             if (!wdown_f) { std::cerr << "Cannot open W_down\n"; exit(1); }
 
             ActiveKernel ak(device, spec_gemm_embd);
             for (int chunk = 0; chunk < FFN_DOWN_K_CHUNKS; chunk++) {
+                auto ck0 = Clock::now();
+
                 // Copy act chunk [1024, 768] → bo_ffn_down_A
+                // (read from gelu_full_host which is already in memory)
                 uint16_t *down_in_map = bo_ffn_down_A.map<uint16_t*>();
                 for (int r = 0; r < SEQ; r++)
                     memcpy(down_in_map + r * FFN_DOWN_K_CHUNK,
-                           act_host.data() + r * FFN_HID + chunk * FFN_DOWN_K_CHUNK,
+                           gelu_full_host + r * FFN_HID + chunk * FFN_DOWN_K_CHUNK,
                            FFN_DOWN_K_CHUNK * sizeof(uint16_t));
                 bo_ffn_down_A.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-                // Load W_down chunk [768, 768]
+                // Load W_down chunk [768, 768] from disk
                 wdown_f.seekg((size_t)chunk * FFN_DOWN_K_CHUNK * EMBD * sizeof(uint16_t));
                 wdown_f.read(bo_W_down_chunk.map<char*>(),
                              FFN_DOWN_K_CHUNK * EMBD * sizeof(uint16_t));
                 bo_W_down_chunk.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+                auto ck1 = Clock::now();
 
                 ak.run3(bo_ffn_down_A, bo_ffn_down_C, bo_W_down_chunk);
                 bo_ffn_down_C.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -595,27 +599,70 @@ int main(int argc, const char *argv[]) {
                 uint16_t *c_map = bo_ffn_down_C.map<uint16_t*>();
                 for (int i = 0; i < SEQ * EMBD; i++)
                     ffn_out_f32[i] += bf16_to_f32(c_map[i]);
+                auto ck2 = Clock::now();
+
+                fdn_disk_ms += span_ms(ck0, ck1);
+                fdn_gemm_ms += span_ms(ck1, ck2);
             }
         }
+        auto p_fdn_end = Clock::now();
 
         // ---- Step 14: residual += ffn_out_f32 (convert back to bf16) ----
         for (int i = 0; i < SEQ * EMBD; i++) {
             float r = bf16_to_f32(residual_host[i]) + ffn_out_f32[i];
             residual_host[i] = f32_to_bf16(r);
         }
+        // Cleanup GELU output buffer
+        free(gelu_full_host);
+        auto p_res2 = Clock::now();
+
+        if (verbosity >= 2) {
+            std::printf("[profile layer %d]\n", layer);
+            std::printf("  weight_load  : %6.1f ms\n",          span_ms(p0,       p_wl));
+            std::printf("  input_load   : %6.1f ms  (first layer only)\n", span_ms(p_wl, p_input));
+            std::printf("  norm1        : %6.1f ms  (32 tiles)\n",         span_ms(p_input,  p_n1));
+            std::printf("  gemm_qkv     : %6.1f ms  (3x[1024,768]^2)\n",  span_ms(p_n1,     p_qkv));
+            std::printf("  fa_prepass   : %6.1f ms  (cpu: extract K_T,V x %d heads)\n", span_ms(p_qkv, p_fa_pre), N_HEAD);
+            std::printf("  fa_dispatch  : %6.1f ms  (%d FA calls)\n",     span_ms(p_fa_pre, p_fa),   N_HEAD);
+            std::printf("  gemm_wo      : %6.1f ms\n",                     span_ms(p_fa,     p_wo));
+            std::printf("  residual1    : %6.1f ms\n",                     span_ms(p_wo,     p_res1));
+            std::printf("  norm2        : %6.1f ms  (32 tiles)\n",         span_ms(p_res1,   p_n2));
+            std::printf("  gemm_up      : %6.1f ms  ([1024,768]x[768,3072])\n", span_ms(p_n2, p_up));
+            std::printf("  gelu         : %6.1f ms  (32 tiles)\n",         span_ms(p_up,     p_gelu));
+            std::printf("  fdn_load     : %6.1f ms  (4 W_down chunks disk+act copy)\n", fdn_disk_ms);
+            std::printf("  fdn_compute  : %6.1f ms  (4 gemm chunks + f32 accum)\n",     fdn_gemm_ms);
+            std::printf("  residual2    : %6.1f ms\n",                     span_ms(p_fdn_end, p_res2));
+            std::printf("  TOTAL        : %6.1f ms\n",                     span_ms(p0,        p_res2));
+        }
     };
 
-    // ---- Warmup + timed runs ----
-    if (verbosity >= 1) std::cout << "Warmup run...\n";
-    run_forward();  // warmup
+    if (num_layers == 1 && layers_dir.empty()) {
+        // ---- Single-layer benchmark mode (backward compatible) ----
+        if (verbosity >= 1) std::cout << "Warmup run...\n";
+        run_forward(0, true);  // warmup
 
-    auto t0 = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < n_iters; i++) run_forward();
-    auto t1 = std::chrono::high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < n_iters; i++) run_forward(0, true);
+        auto t1 = std::chrono::high_resolution_clock::now();
 
-    float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
-    std::cout << "Vision encoder forward: " << total_ms / n_iters << " ms/iter"
-              << " (avg over " << n_iters << " iters)\n";
+        float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
+        std::cout << "Vision encoder forward: " << total_ms / n_iters << " ms/iter"
+                  << " (avg over " << n_iters << " iters)\n";
+    } else {
+        // ---- Multi-layer mode: run all layers in one process ----
+        if (verbosity >= 1)
+            std::cout << "Running " << num_layers << " layers from " << layers_dir << "\n";
+
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int l = 0; l < num_layers; l++)
+            run_forward(l, l == 0);
+        auto t1 = std::chrono::high_resolution_clock::now();
+
+        float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
+        std::cout << "Vision encoder forward: " << total_ms << " ms total"
+                  << " (" << num_layers << " layers, "
+                  << total_ms / num_layers << " ms/layer)\n";
+    }
 
     // ---- Write output ----
     std::ofstream out_f(vm["output"].as<std::string>(), std::ios::binary);

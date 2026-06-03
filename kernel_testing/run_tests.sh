@@ -19,12 +19,12 @@ run_test() {
 }
 
 # Kernel-level tests
-run_test "test_rope_full (expected FAIL)" "vla/tests"  "test_rope_full.py"
-run_test "test_sin_cos"                   "vla/tests"  "test_sin_cos.py"
-run_test "test_rope_fused"                "vla"        "test_rope_fused.py"
-run_test "test_rope_multiple"             "vla"        "test_rope_multiple.py"
-run_test "test_gelu_bf16_new"             "gelu"       "test_gelu_bf16_new.py"
-run_test "test_silu_bf16_new"             "silu"       "test_silu_bf16_new.py"
+run_test "test_rope_full (expected FAIL)" "kernel_testing/rope"  "test_rope_full.py"
+run_test "test_sin_cos"                   "kernel_testing/rope"  "test_sin_cos.py"
+run_test "test_rope_fused"                "kernel_testing/rope"  "test_rope_fused.py"
+run_test "test_rope_multiple"             "kernel_testing/rope"  "test_rope_multiple.py"
+run_test "test_gelu_bf16_new"             "kernel_testing/gelu"  "test_gelu_bf16_new.py"
+run_test "test_silu_bf16_new"             "kernel_testing/silu"  "test_silu_bf16_new.py"
 
 # VLA component tests
 run_test "text_encoder_bf16"     "vla"  "text_encoder_bf16.py"

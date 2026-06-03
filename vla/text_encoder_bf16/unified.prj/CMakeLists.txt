@@ -7,8 +7,8 @@ set(CMAKE_CXX_COMPILER g++-13)
 project(text_encoder_pipeline)
 
 set(BOOST_ROOT /usr/include/boost CACHE STRING "Path to Boost install")
-set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT include dir")
-set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT lib dir")
+set(XRT_INC_DIR /usr/include CACHE STRING "Path to XRT include dir")
+set(XRT_LIB_DIR /usr/lib/x86_64-linux-gnu CACHE STRING "Path to XRT lib dir")
 
 find_package(Boost REQUIRED)
 

@@ -38,7 +38,7 @@ def _mismatch_stats(actual: np.ndarray, expected: np.ndarray, rtol: float, atol:
     mismatch_pct = 100.0 * mismatches / total if total else 0.0
     return mismatch_pct, mismatches, total
 
-KERNEL_LIB_PATH = "../../cc/bf16_new/"
+KERNEL_LIB_PATH = "../../cc/bf16/"
 def _test_sine_single_tile():
     sine = ExternalModule(
         top="sin_bfloat16",

@@ -192,7 +192,7 @@ def main():
     # Save
     import json
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    out_path = os.path.join(SCRIPT_DIR, "vla_npu_time_breakdown.json")
+    out_path = os.path.join(SCRIPT_DIR, "data", "vla_npu_time_breakdown.json")
     save_data = {}
     for name, c in components.items():
         save_data[name] = {

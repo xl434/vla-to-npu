@@ -20,7 +20,7 @@ Ty = bfloat16
 feature_tile = 768
 seq_tile = 4
 
-KERNEL_LIB_PATH = "../../cc/bf16_new/"
+KERNEL_LIB_PATH = "../../cc/bf16/"
 
 def _test_silu_bf16_new_single_tile():
     silu = ExternalModule(

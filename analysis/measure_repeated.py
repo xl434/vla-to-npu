@@ -33,7 +33,7 @@ from text_encoder_bf16 import (
 from vision_block_bf16 import gemm_embd_embd_mod
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_JSON = os.path.join(SCRIPT_DIR, "repeated_calls_data.json")
+OUTPUT_JSON = os.path.join(SCRIPT_DIR, "data", "repeated_calls_data.json")
 
 
 def capture_call(fn):

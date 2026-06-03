@@ -32,7 +32,7 @@ SEQ_T          = 48
 EMBD_S         = 960         # TEXT
 SEQ_S          = 1
 PADDING        = 15
-VIT_NUM_LAYERS = 1
+VIT_NUM_LAYERS = 3
 LLAMA_NUM_LAYERS = 2
 SKIP           = 2
 TEXT_VOCAB_SIZE = 49280
@@ -113,9 +113,7 @@ def create_text_emb(vocab_size, hidden_size, seq):
 # ============================================================
 
 def vision_encoder(num_layers, x, params):
-    for _ in range(num_layers):
-        x = cpp.vision_block(x, params)
-    return x
+    return cpp.vision_encoder(num_layers, x, params)
 
 
 # ============================================================
@@ -124,13 +122,12 @@ def vision_encoder(num_layers, x, params):
 
 def joint_transformer(num_layers, vlm_input, action, vlm_params,
                       exp_self_params, exp_cross_params):
-    for i in range(num_layers):
-        vlm_output, text_k, text_v = cpp.text_encoder_forward(vlm_input, vlm_params)
-        vlm_input = vlm_output
-        if i % SKIP == 0:
-            action = cpp.action_expert_self_forward(action, exp_self_params)
-        else:
-            action = cpp.action_expert_cross_forward(action, text_k, text_v, exp_cross_params)
+    # Batch all text encoder layers in one subprocess (saves num_layers-1 XRT startups)
+    _, kv_pairs = cpp.text_encoder_layers_forward(num_layers, vlm_input, vlm_params)
+    # Batch all action expert layers in one subprocess (saves num_layers-1 XRT startups)
+    action = cpp.action_expert_layers_forward(
+        num_layers, SKIP, action, kv_pairs, exp_self_params, exp_cross_params
+    )
     return action
 
 

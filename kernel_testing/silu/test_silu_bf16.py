@@ -10,7 +10,7 @@ from allo.memory import Layout
 from allo.backend.aie.external_kernel import ExternalModule
 from ml_dtypes import bfloat16 as np_bfloat16
 
-KERNEL_LIB_PATH = "../../cc/bf16_old/"
+KERNEL_LIB_PATH = "../../cc/old_kernels/bf16_old/"
 
 S = Layout.Shard
 R = Layout.Replicate

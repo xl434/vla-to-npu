@@ -76,7 +76,7 @@ flash_gemm_mod = df.build(
 # Allo convention: input_idx=[0,2], output_idx=[1]
 # slot3=Q_tile, slot4=scores(out), slot5=K_tile_T
 # ============================================================
-KERNEL_BF16_PATH = "../cc/bf16/"
+KERNEL_BF16_PATH = "../cc/bf16_vla/"
 
 flash_score_ext = ExternalModule(
     top="flash_attn_score_bf16",

@@ -300,7 +300,7 @@ def main():
                        for (name, c, cs, ws, sp) in rows},
         "total": {"calls": total_calls, "current_s": round(total_current_s, 1), "warm_npu_s": round(total_warm_s, 3), "speedup": round(total_speedup, 0)},
     }
-    out_path = os.path.join(SCRIPT_DIR, "persistent_runtime_estimate.json")
+    out_path = os.path.join(SCRIPT_DIR, "data", "persistent_runtime_estimate.json")
     with open(out_path, "w") as f:
         json.dump(data, f, indent=2)
     print(f"\nData saved to: {out_path}")

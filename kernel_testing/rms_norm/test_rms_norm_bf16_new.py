@@ -36,7 +36,7 @@ class RMSNorm(nn.Module):
 def test_rms_norm():
     norm = ExternalModule(
         top="rms_norm",
-        impl_path="../../cc/bf16_new/rms_norm_bf16.cc",
+        impl_path="../../cc/bf16/rms_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )
@@ -153,7 +153,7 @@ def report_mismatches(actual, expected, rtol=1e-2, atol=1e-3, max_print=20):
 def test_rms_norm_tiling():
     norm = ExternalModule(
         top="rms_norm",
-        impl_path="../../cc/bf16_new/rms_norm_bf16.cc",
+        impl_path="../../cc/bf16/rms_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )
@@ -236,7 +236,7 @@ def test_rms_norm_tiling():
 def test_rms_norm_tiling_small():
     norm = ExternalModule(
         top="rms_norm_small",
-        impl_path="../../cc/bf16_new/rms_norm_bf16.cc",
+        impl_path="../../cc/bf16/rms_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )

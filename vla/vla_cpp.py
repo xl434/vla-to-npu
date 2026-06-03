@@ -148,10 +148,45 @@ def vision_block(x: np.ndarray, params: dict) -> np.ndarray:
 
 
 def vision_encoder(num_layers: int, x: np.ndarray, params: dict) -> np.ndarray:
-    """Run num_layers vision blocks via C++ (drop-in for vla.vision_encoder)."""
-    for _ in range(num_layers):
-        x = vision_block(x, params)
-    return x
+    """Run num_layers vision blocks in a single subprocess (saves N-1 XRT startup costs).
+
+    params: single-layer weight dict (same weights reused for all layers when testing).
+    For production with different per-layer weights, pass a list and this function will
+    write each layer to a separate subdirectory and invoke the binary once with --num-layers.
+    """
+    exe = os.path.join(_VLA_DIR, "vision_block/unified.prj/build/vision_encoder")
+    cwd = os.path.join(_VLA_DIR, "vision_block/unified.prj")
+
+    if num_layers == 1:
+        return vision_block(x, params)
+
+    # Multi-layer: write each layer's weights to layers-dir/layer_i/
+    params_list = params if isinstance(params, list) else [params] * num_layers
+
+    with tempfile.TemporaryDirectory() as d:
+        _write_bf16(f"{d}/x.data", x)
+        for i, p in enumerate(params_list):
+            layer_dir = f"{d}/layer_{i}"
+            os.makedirs(layer_dir, exist_ok=True)
+            _write_bf16(f"{layer_dir}/w1.data",    p["W_norm_1"])
+            _write_bf16(f"{layer_dir}/b1.data",    p["b_norm_1"])
+            _write_bf16(f"{layer_dir}/wq.data",    p["Wq"])
+            _write_bf16(f"{layer_dir}/wk.data",    p["Wk"])
+            _write_bf16(f"{layer_dir}/wv.data",    p["Wv"])
+            _write_bf16(f"{layer_dir}/wo.data",    p["Wo"])
+            _write_bf16(f"{layer_dir}/wup.data",   p["W_up"])
+            _write_bf16(f"{layer_dir}/w2.data",    p["W_norm_2"])
+            _write_bf16(f"{layer_dir}/b2.data",    p["b_norm_2"])
+            _write_bf16(f"{layer_dir}/wdown.data", p["W_down"])
+        out = f"{d}/out.data"
+        _run([
+            exe,
+            "--input",       f"{d}/x.data",
+            "--num-layers",  str(num_layers),
+            "--layers-dir",  d,
+            "--output",      out,
+        ], cwd, "vision_encoder")
+        return _read_bf16(out, (1024, 768))
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +284,58 @@ def text_encoder_forward(x: np.ndarray, params: dict):
             _read_bf16(key_p, (128, 320)),
             _read_bf16(val_p, (128, 320)),
         )
+
+
+def text_encoder_layers_forward(num_layers: int, x: np.ndarray, params) -> tuple:
+    """Run num_layers text encoder blocks in a single subprocess.
+
+    params: single-layer weight dict (same weights reused when testing) or list of dicts.
+    returns: (output [128,960], [(key [128,320], val [128,320]), ...] per layer)
+    """
+    if num_layers == 1:
+        params_1 = params[0] if isinstance(params, list) else params
+        out, k, v = text_encoder_forward(x, params_1)
+        return out, [(k, v)]
+
+    exe = os.path.join(_VLA_DIR, "text_encoder_bf16/unified.prj/build/text_encoder")
+    cwd = os.path.join(_VLA_DIR, "text_encoder_bf16/unified.prj")
+
+    params_list = params if isinstance(params, list) else [params] * num_layers
+
+    with tempfile.TemporaryDirectory() as d:
+        _write_bf16(f"{d}/x.data", x)
+        for i, p in enumerate(params_list):
+            layer_dir = f"{d}/layer_{i}"
+            os.makedirs(layer_dir, exist_ok=True)
+            _write_bf16(f"{layer_dir}/wn1.data",   p["W_norm_1"])
+            _write_bf16(f"{layer_dir}/wn2.data",   p["W_norm_2"])
+            _write_bf16(f"{layer_dir}/wq.data",    p["Wq"])
+            _write_bf16(f"{layer_dir}/wk.data",    p["Wk"])
+            _write_bf16(f"{layer_dir}/wv.data",    p["Wv"])
+            _write_bf16(f"{layer_dir}/wo.data",    p["Wo"])
+            _write_bf16(f"{layer_dir}/wgate.data", p["W_gate"])
+            _write_bf16(f"{layer_dir}/wup.data",   p["W_up"])
+            _write_bf16(f"{layer_dir}/wdown.data", p["W_down"])
+        out_p  = f"{d}/out.data"
+        kv_dir = f"{d}/kv"
+        os.makedirs(kv_dir, exist_ok=True)
+
+        _run([
+            exe,
+            "--input",      f"{d}/x.data",
+            "--num-layers", str(num_layers),
+            "--layers-dir", d,
+            "--kv-dir",     kv_dir,
+            "--output",     out_p,
+        ], cwd, "text_encoder_layers")
+
+        output   = _read_bf16(out_p, (128, 960))
+        kv_pairs = []
+        for i in range(num_layers):
+            key = _read_bf16(f"{kv_dir}/layer_{i}/key.data", (128, 320))
+            val = _read_bf16(f"{kv_dir}/layer_{i}/val.data", (128, 320))
+            kv_pairs.append((key, val))
+        return output, kv_pairs
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +443,76 @@ def action_expert_cross_forward(
             "--output",   out,
         ], cwd, "action_expert_cross")
 
+        return _read_bf16(out, (32, 768))
+
+
+def action_expert_layers_forward(
+    num_layers: int,
+    skip: int,
+    action: np.ndarray,
+    kv_pairs: list,
+    self_params: dict,
+    cross_params: dict,
+) -> np.ndarray:
+    """Run num_layers action expert blocks (alternating self/cross) in a single subprocess.
+
+    skip:       alternation period — layer i is self if i%skip==0, else cross
+    kv_pairs:   list of (key [128,320], val [128,320]) per layer (from text_encoder_layers_forward)
+    self_params: weights for self-attention layers
+    cross_params: weights for cross-attention layers
+    returns [32, 768] bf16
+    """
+    exe = os.path.join(_VLA_DIR, "action_expert_bf16/unified.prj/build/action_expert")
+    cwd = os.path.join(_VLA_DIR, "action_expert_bf16/unified.prj")
+
+    if num_layers == 1:
+        if skip > 0:  # layer 0 → self
+            return action_expert_self_forward(action, self_params)
+        else:
+            k, v = kv_pairs[0]
+            return action_expert_cross_forward(action, k, v, cross_params)
+
+    def _write_layer(layer_dir: str, params: dict, is_cross: bool) -> None:
+        os.makedirs(layer_dir, exist_ok=True)
+        _write_bf16(f"{layer_dir}/wn1.data",   params["W_norm_1"])
+        _write_bf16(f"{layer_dir}/wn2.data",   params["W_norm_2"])
+        _write_bf16(f"{layer_dir}/wq.data",    params["Wq"])
+        _write_bf16(f"{layer_dir}/wo.data",    params["Wo"])
+        _write_bf16(f"{layer_dir}/wgate.data", params["W_gate"])
+        _write_bf16(f"{layer_dir}/wup.data",   params["W_up"])
+        _write_bf16(f"{layer_dir}/wdown.data", params["W_down"])
+        if is_cross:
+            _write_bf16(f"{layer_dir}/wkc.data", params["Wk_cross"])
+            _write_bf16(f"{layer_dir}/wvc.data", params["Wv_cross"])
+        else:
+            _write_bf16(f"{layer_dir}/wk.data", params["Wk"])
+            _write_bf16(f"{layer_dir}/wv.data", params["Wv"])
+
+    with tempfile.TemporaryDirectory() as d:
+        _write_bf16(f"{d}/x.data", action)
+        kv_dir = f"{d}/kv"
+        os.makedirs(kv_dir, exist_ok=True)
+
+        for i in range(num_layers):
+            cross_l = (i % skip != 0)
+            p = cross_params if cross_l else self_params
+            _write_layer(f"{d}/layer_{i}", p, cross_l)
+            if cross_l and kv_pairs is not None:
+                layer_kv = f"{kv_dir}/layer_{i}"
+                os.makedirs(layer_kv, exist_ok=True)
+                _write_bf16(f"{layer_kv}/key.data", kv_pairs[i][0])
+                _write_bf16(f"{layer_kv}/val.data", kv_pairs[i][1])
+
+        out = f"{d}/out.data"
+        _run([
+            exe,
+            "--input",      f"{d}/x.data",
+            "--num-layers", str(num_layers),
+            "--skip",       str(skip),
+            "--layers-dir", d,
+            "--kv-dir",     kv_dir,
+            "--output",     out,
+        ], cwd, "action_expert_layers")
         return _read_bf16(out, (32, 768))
 
 

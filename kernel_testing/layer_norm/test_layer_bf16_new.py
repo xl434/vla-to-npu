@@ -37,7 +37,7 @@ def layernorm(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-5) -> torch
 def test_layer_norm():
     norm = ExternalModule(
         top="layer_norm",
-        impl_path="../../cc/bf16_new/layer_norm_bf16.cc",
+        impl_path="../../cc/bf16/layer_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )
@@ -155,7 +155,7 @@ def layernorm(x: torch.Tensor, weight: torch.Tensor, eps: float = 1e-5) -> torch
 def test_layer_norm_tiling():
     norm = ExternalModule(
         top="layer_norm",
-        impl_path="../../cc/bf16_new/layer_norm_bf16.cc",
+        impl_path="../../cc/bf16/layer_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )
@@ -236,7 +236,7 @@ def test_layer_norm_tiling():
 def test_layer_norm_tiling_small():
     norm = ExternalModule(
         top="layer_norm_small",
-        impl_path="../../cc/bf16_new/layer_norm_bf16.cc",
+        impl_path="../../cc/bf16/layer_norm_bf16.cc",
         input_idx=[0, 1],
         output_idx=[2],
     )

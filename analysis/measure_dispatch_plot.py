@@ -231,8 +231,9 @@ def main():
     ax2.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig("dispatch_breakdown.png", dpi=150, bbox_inches="tight")
-    print(f"\nPlot saved to: dispatch_breakdown.png")
+    _plots_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plots")
+    plt.savefig(os.path.join(_plots_dir, "dispatch_breakdown.png"), dpi=150, bbox_inches="tight")
+    print(f"\nPlot saved to: {os.path.join(_plots_dir, 'dispatch_breakdown.png')}")
 
     # ── Plot 3: Pie chart of where time goes in full pipeline ──────────────
     fig2, (ax3, ax4) = plt.subplots(1, 2, figsize=(14, 6))
@@ -280,8 +281,8 @@ def main():
     ax4.set_title("Estimated Full-Pipeline Time by Component", fontsize=13, fontweight="bold")
 
     plt.tight_layout()
-    plt.savefig("pipeline_breakdown.png", dpi=150, bbox_inches="tight")
-    print(f"Plot saved to: pipeline_breakdown.png")
+    plt.savefig(os.path.join(_plots_dir, "pipeline_breakdown.png"), dpi=150, bbox_inches="tight")
+    print(f"Plot saved to: {os.path.join(_plots_dir, 'pipeline_breakdown.png')}")
 
 
 if __name__ == "__main__":

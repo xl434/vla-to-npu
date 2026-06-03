@@ -37,6 +37,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include <filesystem>
+
 namespace po = boost::program_options;
 
 // ============================================================
@@ -238,18 +240,21 @@ int main(int argc, const char *argv[]) {
     opts.add_options()
         ("help,h",       "help")
         ("input",        po::value<std::string>()->required(),              "[128,960] bf16 input")
-        ("W_norm_1",     po::value<std::string>()->required(),              "[960] bf16 rms_norm weight 1")
-        ("W_norm_2",     po::value<std::string>()->required(),              "[960] bf16 rms_norm weight 2")
-        ("Wq",           po::value<std::string>()->required(),              "[960,960] bf16")
-        ("Wk",           po::value<std::string>()->required(),              "[960,320] bf16")
-        ("Wv",           po::value<std::string>()->required(),              "[960,320] bf16")
-        ("Wo",           po::value<std::string>()->required(),              "[960,960] bf16")
-        ("W_gate",       po::value<std::string>()->required(),              "[960,2560] bf16")
-        ("W_up",         po::value<std::string>()->required(),              "[960,2560] bf16")
-        ("W_down",       po::value<std::string>()->required(),              "[2560,960] bf16")
+        ("W_norm_1",     po::value<std::string>()->default_value(""),      "[960] bf16 rms_norm weight 1")
+        ("W_norm_2",     po::value<std::string>()->default_value(""),      "[960] bf16 rms_norm weight 2")
+        ("Wq",           po::value<std::string>()->default_value(""),      "[960,960] bf16")
+        ("Wk",           po::value<std::string>()->default_value(""),      "[960,320] bf16")
+        ("Wv",           po::value<std::string>()->default_value(""),      "[960,320] bf16")
+        ("Wo",           po::value<std::string>()->default_value(""),      "[960,960] bf16")
+        ("W_gate",       po::value<std::string>()->default_value(""),      "[960,2560] bf16")
+        ("W_up",         po::value<std::string>()->default_value(""),      "[960,2560] bf16")
+        ("W_down",       po::value<std::string>()->default_value(""),      "[2560,960] bf16")
         ("output",       po::value<std::string>()->default_value("output.data"), "[128,960] bf16")
         ("key_out",      po::value<std::string>()->default_value(""),       "[128,320] bf16 (optional)")
         ("val_out",      po::value<std::string>()->default_value(""),       "[128,320] bf16 (optional)")
+        ("num-layers,L", po::value<int>()->default_value(1),               "number of transformer layers")
+        ("layers-dir",   po::value<std::string>()->default_value(""),      "dir with layer_0/,layer_1/,... weight subdirs")
+        ("kv-dir",       po::value<std::string>()->default_value(""),      "dir to write per-layer key/val for cross-attention")
         ("iters,n",      po::value<int>()->default_value(1),               "number of forward passes")
         ("verbosity,v",  po::value<int>()->default_value(0),               "verbosity");
 
@@ -262,8 +267,18 @@ int main(int argc, const char *argv[]) {
         std::cerr << e.what() << "\n" << opts; return 1;
     }
 
-    int verbosity = vm["verbosity"].as<int>();
-    int n_iters   = vm["iters"].as<int>();
+    int verbosity  = vm["verbosity"].as<int>();
+    int n_iters    = vm["iters"].as<int>();
+    int num_layers = vm["num-layers"].as<int>();
+    std::string layers_dir = vm["layers-dir"].as<std::string>();
+    std::string kv_dir     = vm["kv-dir"].as<std::string>();
+
+    auto weight_path = [&](const std::string &short_name, const std::string &cli_arg,
+                            int layer) -> std::string {
+        if (!layers_dir.empty())
+            return layers_dir + "/layer_" + std::to_string(layer) + "/" + short_name;
+        return vm[cli_arg].as<std::string>();
+    };
 
     const std::string BASE = "..";
     auto xclbin_path = [&](const std::string &name) {
@@ -360,17 +375,6 @@ int main(int argc, const char *argv[]) {
     // Input
     auto bo_input = make_bo(device, g3, SZ_FULL);
 
-    // ---- Load weights ----
-    if (verbosity >= 1) std::cout << "Loading weights...\n";
-    load_file_to_bo(bo_W_norm_1, vm["W_norm_1"].as<std::string>(), SZ_NORM_W);
-    load_file_to_bo(bo_W_norm_2, vm["W_norm_2"].as<std::string>(), SZ_NORM_W);
-    load_file_to_bo(bo_Wq,       vm["Wq"].as<std::string>(),       SZ_WQ);
-    load_file_to_bo(bo_Wk,       vm["Wk"].as<std::string>(),       SZ_WKV);
-    load_file_to_bo(bo_Wv,       vm["Wv"].as<std::string>(),       SZ_WKV);
-    load_file_to_bo(bo_Wo,       vm["Wo"].as<std::string>(),       SZ_WQ);
-    load_file_to_bo(bo_W_gate,   vm["W_gate"].as<std::string>(),   (size_t)EMBD * FFN_HID * 2);
-    load_file_to_bo(bo_W_up,     vm["W_up"].as<std::string>(),     (size_t)EMBD * FFN_HID * 2);
-
     // Host staging
     std::vector<uint16_t> residual_host(SEQ * EMBD, 0);
     std::vector<uint16_t> normed_host(SEQ * EMBD, 0);
@@ -431,10 +435,22 @@ int main(int argc, const char *argv[]) {
         }
     };
 
-    auto run_forward = [&]() {
+    auto run_forward = [&](int layer = 0, bool first_layer = true) {
+        // ---- Load weights for this layer ----
+        load_file_to_bo(bo_W_norm_1, weight_path("wn1.data",   "W_norm_1", layer), SZ_NORM_W);
+        load_file_to_bo(bo_W_norm_2, weight_path("wn2.data",   "W_norm_2", layer), SZ_NORM_W);
+        load_file_to_bo(bo_Wq,       weight_path("wq.data",    "Wq",       layer), SZ_WQ);
+        load_file_to_bo(bo_Wk,       weight_path("wk.data",    "Wk",       layer), SZ_WKV);
+        load_file_to_bo(bo_Wv,       weight_path("wv.data",    "Wv",       layer), SZ_WKV);
+        load_file_to_bo(bo_Wo,       weight_path("wo.data",    "Wo",       layer), SZ_WQ);
+        load_file_to_bo(bo_W_gate,   weight_path("wgate.data", "W_gate",   layer), (size_t)EMBD * FFN_HID * 2);
+        load_file_to_bo(bo_W_up,     weight_path("wup.data",   "W_up",     layer), (size_t)EMBD * FFN_HID * 2);
+
         // ---- Step 1: Load input → residual ----
-        load_file_to_bo(bo_input, vm["input"].as<std::string>(), SZ_FULL);
-        memcpy(residual_host.data(), bo_input.map<uint16_t*>(), SZ_FULL);
+        if (first_layer) {
+            load_file_to_bo(bo_input, vm["input"].as<std::string>(), SZ_FULL);
+            memcpy(residual_host.data(), bo_input.map<uint16_t*>(), SZ_FULL);
+        }
 
         // ---- Step 2: RMSNorm 1 — 4 tile calls ----
         {
@@ -643,7 +659,7 @@ int main(int argc, const char *argv[]) {
         // ---- Step 15: FFN Down (8 chunks of K=320) ----
         std::fill(ffn_out_f32.begin(), ffn_out_f32.end(), 0.0f);
         {
-            std::ifstream wdown_f(vm["W_down"].as<std::string>(), std::ios::binary);
+            std::ifstream wdown_f(weight_path("wdown.data", "W_down", layer), std::ios::binary);
             if (!wdown_f) { std::cerr << "Cannot open W_down\n"; exit(1); }
 
             ActiveKernel ak(device, spec_gemm_ffn_down);
@@ -680,8 +696,16 @@ int main(int argc, const char *argv[]) {
         // ---- Step 17: Cross-K/V export (CPU only) ----
         // RMSNorm of post_attn on CPU, then CPU matmul
         // (avoids disturbing AIE pipeline state)
-        auto key_out_path = vm["key_out"].as<std::string>();
-        auto val_out_path = vm["val_out"].as<std::string>();
+        std::string key_out_path, val_out_path;
+        if (!kv_dir.empty()) {
+            std::string layer_kv = kv_dir + "/layer_" + std::to_string(layer);
+            std::filesystem::create_directories(layer_kv);
+            key_out_path = layer_kv + "/key.data";
+            val_out_path = layer_kv + "/val.data";
+        } else {
+            key_out_path = vm["key_out"].as<std::string>();
+            val_out_path = vm["val_out"].as<std::string>();
+        }
         if (!key_out_path.empty() || !val_out_path.empty()) {
             // Load W_norm_1 and Wk, Wv from files for CPU cross-norm
             // (already in BOs, map them out)
@@ -737,16 +761,27 @@ int main(int argc, const char *argv[]) {
         }
     };
 
-    if (verbosity >= 1) std::cout << "Warmup run...\n";
-    run_forward();
+    if (num_layers == 1 && layers_dir.empty()) {
+        if (verbosity >= 1) std::cout << "Warmup run...\n";
+        run_forward(0, true);
 
-    auto t0 = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < n_iters; i++) run_forward();
-    auto t1 = std::chrono::high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < n_iters; i++) run_forward(0, true);
+        auto t1 = std::chrono::high_resolution_clock::now();
 
-    float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
-    std::cout << "Text encoder forward: " << total_ms / n_iters << " ms/iter"
-              << " (avg over " << n_iters << " iters)\n";
+        float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
+        std::cout << "Text encoder forward: " << total_ms / n_iters << " ms/iter"
+                  << " (avg over " << n_iters << " iters)\n";
+    } else {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        for (int l = 0; l < num_layers; l++)
+            run_forward(l, l == 0);
+        auto t1 = std::chrono::high_resolution_clock::now();
+
+        float total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0f;
+        std::cout << "Text encoder forward: " << total_ms << " ms total ("
+                  << num_layers << " layers, " << total_ms / num_layers << " ms/layer)\n";
+    }
 
     // ---- Write output ----
     std::ofstream out_f(vm["output"].as<std::string>(), std::ios::binary);

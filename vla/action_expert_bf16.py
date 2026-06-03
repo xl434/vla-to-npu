@@ -42,8 +42,8 @@ R = Layout.Replicate
 # Model Configuration
 # ===============================================================================
 KERNEL_LIB_PATH = "../cc/float/"
-KERNEL_BF16_PATH = "../cc/bf16/"
-KERNEL_BF16_OLD_PATH = "../cc/bf16_old/"
+KERNEL_BF16_PATH = "../cc/bf16_vla/"
+KERNEL_BF16_OLD_PATH = "../cc/old_kernels/bf16_old/"
 
 BATCH = 1
 SEQ = 32              # action sequence length
