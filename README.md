@@ -49,14 +49,14 @@ python test_silu_bf16_new.py
 
 ```
 vla-to-npu/
-├── cc/                            # Kernel implementations
+├── cc/                            # C++ Kernel Implementations
 │   ├── bf16/                      #   General bfloat16 kernels
 │   ├── bf16_vla/                  #   VLA-specific kernels (optimized shapes)
 │   │   ├── silu_128_bf16.cc       #   SiLU for [4][128] tile
 │   │   ├── rms_norm_960_bf16.cc   #   RMS Norm for [1][960] token
 │   │   ├── layer_norm_bf16.cc     #   LayerNorm
 │   │   ├── gelu_bf16_8rows.cc     #   GELU vectorized
-│   │   └── ...
+│   │   └── ... (20+ kernel implementations)
 │   ├── float/                     #   Float32 kernels (reference)
 │   └── gemm.py                    #   GEMM Allo templates
 │
