@@ -231,7 +231,7 @@ def main():
     # =====================================================================
     if "--validate" in sys.argv:
         print("\n== Running PyTorch CPU reference for validation ==")
-        from vla import (
+        from vla_ref import (
             preproc_ref, vit_ref, con_ref, joint_transformer_ref, postprocessing_ref
         )
         torch.set_default_dtype(torch.float32)
