@@ -180,7 +180,7 @@ all kernels following the patterns in UNIFIED_KERNEL_GUIDE.md.
 CRITICAL: Verify output matches individual Allo kernel outputs.
 ```
 
-**Step 5: Compile unified.prj**
+**Step 5: Compile and test unified.prj**
 
 ```bash
 cd [COMPONENT_PATH]/unified.prj
