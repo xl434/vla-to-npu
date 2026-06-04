@@ -61,7 +61,7 @@ assert HEAD_DIM % 64 == 0
 Ty = Ty_bf16
 NP_DTYPE = np_bfloat16
 LINEAR_TILE = 64
-ATTN_TILE = 32
+ATTN_TILE = 8  # Must match softmax_128_bf16 kernel dimension [8][128]
 
 # ===============================================================================
 # PyTorch Reference: Self-Attention Expert Block
