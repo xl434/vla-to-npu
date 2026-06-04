@@ -21,47 +21,9 @@ Level 3: Unified binary (Claude-generated C++ combining multiple kernels)
 
 ### Example: SiLU Activation
 
-**File:** `cc/bf16_vla/silu_128_bf16.cc`
+**Kernel source:** `cc/bf16_vla/silu_128_bf16.cc`
 
-This implements SiLU (x * sigmoid(x)) for a 4×128 tile of bfloat16 data:
-
-```cpp
-/*
- * SiLU bf16 for per-core tile [4][128]
- * (SmolVLA action expert: FFN_HID=2048, tiled 2048/16=128 per core)
- */
-
-#include <aie_api/aie.hpp>
-#include <stdint.h>
-
-void silu_bfloat16_128(bfloat16 input_x[4][256], bfloat16 output_x[4][256]) {
-  constexpr int SEQ_TILE         = 4;      // 4 rows
-  constexpr int FEATURE_DIM_TILE = 128;    // 128 features per core
-  constexpr int vec_factor       = 32;     // 32-element vectors
-
-  using vec_t = aie::vector<bfloat16, vec_factor>;
-
-  // Precomputed sigmoid polynomial coefficients
-  const vec_t one = aie::broadcast<bfloat16, vec_factor>(1.0f);
-  
-  // Main computation loop
-  for (int i = 0; i < SEQ_TILE; i++) {
-    for (int j = 0; j < FEATURE_DIM_TILE; j += vec_factor) {
-      vec_t x = aie::load_v<vec_factor>(input_x[i] + j);
-      
-      // Compute sigmoid(x) ≈ polynomial approximation
-      vec_t sig = sigmoid_approx(x);
-      
-      // SiLU = x * sigmoid(x)
-      vec_t result = aie::mul(x, sig);
-      
-      aie::store_v(output_x[i] + j, result);
-    }
-  }
-  
-  event1();
-}
-```
+This implements SiLU (x * sigmoid(x)) for a 4×128 tile of bfloat16 data using AIE vectorization.
 
 **Key concepts:**
 - `aie::vector<T, N>` — vectorized operations (32 bfloat16 elements at once)
@@ -69,75 +31,28 @@ void silu_bfloat16_128(bfloat16 input_x[4][256], bfloat16 output_x[4][256]) {
 - Sigmoid via Padé polynomial approximation (fast, accurate on NPU)
 - Fixed tile size [4][128] optimized for SmolVLA action expert
 
-**Test:** `kernel_testing/silu/test_silu_bf16_new.py`
+**See actual code:** `cc/bf16_vla/silu_128_bf16.cc` (vectorized Padé polynomial for sigmoid)
+
+**Test:** `kernel_testing/silu/test_silu_bf16_new.py` (validates against PyTorch)
 
 ---
 
 ## Level 2: Allo Compiler (Multi-Tile Mapping)
 
-### Example: LayerNorm with Allo
+### Example: RMS Norm with Allo
 
-LayerNorm needs to:
-1. Compute mean and variance across the feature dimension
-2. Normalize each element: (x - mean) / sqrt(var + eps)
-3. Scale and shift: y = gamma * normalized + beta
+RMS Norm needs to:
+1. Compute RMS (root mean square) across the feature dimension
+2. Normalize: y = (x / rms(x)) * gamma + beta
 
 Allo handles:
 - **Tiling strategy**: Split 960-dim into chunks across 16 cores
 - **Communication**: Point-to-point (P2P) for partial reductions
 - **Synchronization**: Proper locks for multi-core execution
 
-**File:** `vla/text_encoder_bf16/rms_norm.py`
+**Allo code:** `vla/text_encoder_bf16.py` and `vla/llama_block_rope_bf16.py`
 
-```python
-import allo
-from allo.ir.types import bfloat16 as bf16
-
-def rms_norm_allo(N: int, D: int, eps: float):
-    """
-    RMS Norm: y = (x / rms(x)) * gamma + beta
-    
-    N: sequence length (1 for text encoder state)
-    D: feature dimension (960 for SmolVLA)
-    eps: small epsilon for numerical stability
-    """
-    
-    # Define inputs
-    x = allo.placeholder((N, D), dtype=bf16, name="x")
-    gamma = allo.placeholder((D,), dtype=bf16, name="gamma")
-    beta = allo.placeholder((D,), dtype=bf16, name="beta")
-    
-    def rms_norm_kernel(x, gamma, beta):
-        # Step 1: Compute RMS across feature dimension
-        rms = allo.output((N, 1), dtype=bf16, name="rms")
-        for i in allo.grid(N):
-            sum_sq = 0.0
-            for j in allo.grid(D):
-                sum_sq += x[i, j] * x[i, j]
-            rms[i, 0] = allo.sqrt(sum_sq / D + eps)
-        
-        # Step 2: Normalize and scale
-        output = allo.output((N, D), dtype=bf16, name="output")
-        for i in allo.grid(N):
-            for j in allo.grid(D):
-                normalized = x[i, j] / rms[i, 0]
-                output[i, j] = normalized * gamma[j] + beta[j]
-        
-        return output
-    
-    # Schedule: map to 16 AIE cores
-    s = allo.customize(rms_norm_kernel, [x, gamma, beta])
-    
-    # Tile strategy
-    s.tile(rms, 1, 64)           # Split RMS computation
-    s.tile(output, 1, 64)        # Split output computation
-    
-    # Vectorization
-    s.vectorize(output, [2])
-    
-    # Compile and return
-    return s.build()
-```
+Uses kernel source: `cc/bf16_vla/rms_norm_960_bf16.cc`
 
 **Key Allo concepts:**
 - `allo.grid()` — parallel loop dimensions
@@ -145,12 +60,11 @@ def rms_norm_allo(N: int, D: int, eps: float):
 - `allo.vectorize()` — enable SIMD on core
 - Point-to-point communication handled automatically for reductions
 
-**Generated output:**
-- `vla/text_encoder_bf16/rms_norm.prj/` — Allo-generated project
-- `rms_norm.prj/build/final.xclbin` — Compiled binary
-- `rms_norm.prj/top.mlir` — Intermediate representation
+**Generated outputs:**
+- `vla/text_encoder_bf16/rms_norm.prj/build/final.xclbin` — Compiled binary
+- Multiple per-kernel dispatches (eliminated by unified.prj)
 
-**Test:** `kernel_testing/layer_norm/test_layer_bf16_new.py`
+**Test:** `kernel_testing/layer_norm/test_layer_bf16_new.py` (validates against PyTorch)
 
 ---
 
@@ -185,34 +99,10 @@ Claude generates a single C++ executable that:
 2. Keeps intermediate data in NPU memory (no DMA)
 3. Single XRT launch for entire pipeline
 
-**Example:** `vla/text_encoder_bf16/unified.prj/test.cpp`
-
-```cpp
-// This executable runs the entire text encoder in one go
-// Instead of 20+ separate kernel calls, it's 1 call
-
-#include "text_encoder_llama_12layer.h"
-
-int main() {
-    // Input: [1, 48, 960] token embeddings
-    bfloat16* input = allocate_bf16(1 * 48 * 960);
-    
-    // ===== Layer 1 =====
-    rms_norm_kernel(input, w1_gamma, w1_beta);  // In-place normalize
-    attn_kernel(input, w1_q, w1_k, w1_v);       // Compute attention
-    mlp_kernel(input, w1_ffn_up, w1_ffn_down);  // FFN
-    
-    // ===== Layer 2 =====
-    rms_norm_kernel(input, w2_gamma, w2_beta);
-    attn_kernel(input, w2_q, w2_k, w2_v);
-    mlp_kernel(input, w2_ffn_up, w2_ffn_down);
-    
-    // ... (repeat for 12 layers)
-    
-    // Output: [1, 48, 960]
-    return 0;
-}
-```
+**Example locations:**
+- `vla/text_encoder_bf16/unified.prj/test.cpp` — Text encoder (12 layers of RMSNorm → Attention → MLP)
+- `vla/vision_block/unified.prj/test.cpp` — Vision encoder (12 layers)
+- `vla/action_expert_bf16/unified.prj/test.cpp` — Action expert (16 layers)
 
 **Benefits:**
 - ✅ Single XRT launch (vs 24 launches for 12 layers × 2 ops/layer)

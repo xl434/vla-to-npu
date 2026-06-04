@@ -140,15 +140,6 @@ SKIP = 2                   # Action expert skip
 
 ---
 
-## Key Optimizations
-
-1. **Unified Binaries** — Claude-generated `.unified.prj/` combines kernels to eliminate per-call overhead
-2. **Flash Attention** — 3-pass attention → 1 kernel (408 → 192 dispatches/layer)
-3. **Vectorized GELU** — Padé approximation with 15.5× speedup
-4. **Multi-Layer Binary** — 12 transformer layers in single process (no context switching)
-
----
-
 ## What's Included
 
 ✅ 20+ optimized AIE kernels (SiLU, GELU, RMS Norm, GEMM, Flash Attention, etc.)  
@@ -161,14 +152,7 @@ SKIP = 2                   # Action expert skip
 
 ## Next Steps
 
-- **Run kernels**: See [DEVELOPMENT.md](DEVELOPMENT.md) for update workflows
-- **Write new kernels**: See [NPU_PROGRAMMING.md](NPU_PROGRAMMING.md) for kernel programming
-- **Optimize components**: Learn how Claude generates `unified.prj` in [NPU_PROGRAMMING.md](NPU_PROGRAMMING.md)
-
----
-
-## Questions?
-
-Refer to:
-- **How to update code?** → [DEVELOPMENT.md](DEVELOPMENT.md)
-- **How to write NPU kernels?** → [NPU_PROGRAMMING.md](NPU_PROGRAMMING.md)
+See [NPU_PROGRAMMING.md](NPU_PROGRAMMING.md) to:
+- Write new kernels (single-tile and multi-tile)
+- Use Allo to map kernels to multiple AIE cores
+- Understand how Claude generates unified.prj to eliminate dispatch overhead
