@@ -81,7 +81,7 @@ SEQ_T = 48                          # text token sequence length
 EMBD_T = EMBD_S = TEXT              # 960 — text/state embedding dim
 SEQ_S = 1                           # state sequence length
 PADDING = 15                        # padding to make mm_seq = 128
-VIT_NUM_LAYERS = 1
+VIT_NUM_LAYERS = 2                  # Match vla_standalone.py
 LLAMA_NUM_LAYERS = 2
 SKIP = 2                            # cross-attention every SKIP layers
 TEXT_VOCAB_SIZE = 49280
