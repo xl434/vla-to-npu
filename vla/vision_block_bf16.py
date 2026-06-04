@@ -87,7 +87,7 @@ class MiniVit(nn.Module):
 # LayerNorm (bf16)
 # ----------------------------------------------------------------
 norm = ExternalModule(
-    top="layer_norm_bf16",
+    top="layer_norm",
     impl_path=KERNEL_BF16_PATH + "layer_norm_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],

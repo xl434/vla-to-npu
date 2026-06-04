@@ -145,8 +145,8 @@ Ty = bfloat16
 # NPU Modules — Postprocessing RMSNorm (width=768)
 # ===============================================================================
 norm = ExternalModule(
-    top="rms_norm_bf16",
-    impl_path="../cc/old_kernels/bf16_old/rms_norm_bf16.cc",
+    top="rms_norm",
+    impl_path="../cc/bf16/rms_norm_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
 )
