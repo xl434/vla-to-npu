@@ -87,30 +87,9 @@ python test_cosine.py
 
 The VLA implementation uses `vla_standalone.py` — an optimized inference pipeline that calls pre-compiled unified binaries directly, with zero build-time overhead.
 
-### Quick Run (Default Small Model)
+### Run Full Model (12L ViT + 12L Text + 16L Action)
 
-```bash
-cd vla
-python3 vla_standalone.py
-```
-
-**Default configuration:** 3-layer ViT + 2-layer text/action  
-**Expected output (~1-2 seconds):**
-```
-Running standalone VLA pipeline (no df.build())...
-
-== Timings (standalone, no rebuild) ==
-Preprocessing           : 0.18 s
-Vision encoder (3L)     : 0.42 s
-Connector               : 0.05 s
-Joint transformer (2L)  : 0.85 s
-Postprocessing          : 0.02 s
-Total                   : 1.52 s
-```
-
-### Running Full Model (12L ViT + 12L Text + 16L Action)
-
-Edit `vla/vla_standalone.py` to use full model configuration:
+**Edit `vla/vla_standalone.py` to set:**
 
 ```python
 VIT_NUM_LAYERS = 12        # Vision encoder depth
@@ -118,8 +97,18 @@ LLAMA_NUM_LAYERS = 12      # Text encoder + action expert depth
 SKIP = 2                   # Action expert skip factor
 ```
 
-**Expected performance (~7 seconds):**
+**Then run:**
+
+```bash
+cd vla
+python3 vla_standalone.py
 ```
+
+**Expected output (~7 seconds):**
+```
+Running standalone VLA pipeline (no df.build())...
+
+== Timings (standalone, no rebuild) ==
 Preprocessing           : 0.18 s
 Vision encoder (12L)    : 2.58 s
 Connector               : 0.18 s
@@ -127,6 +116,17 @@ Joint transformer (12L) : 3.74 s
 Postprocessing          : 0.07 s
 Total                   : 6.93 s
 ```
+
+### Quick Test with Smaller Model
+
+For fast validation, use smaller layer counts:
+
+```python
+VIT_NUM_LAYERS = 3         # Quick test (instead of 12)
+LLAMA_NUM_LAYERS = 2       # Quick test (instead of 12)
+```
+
+This configuration runs in ~1-2 seconds for rapid iteration.
 
 ### Run Individual Components (Binary Mode)
 
