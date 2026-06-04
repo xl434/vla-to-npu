@@ -43,7 +43,7 @@ R = Layout.Replicate
 # ===============================================================================
 KERNEL_LIB_PATH = "../cc/float/"
 KERNEL_BF16_PATH = "../cc/bf16_vla/"
-KERNEL_BF16_OLD_PATH = "../cc/old_kernels/bf16_old/"
+KERNEL_BF16_OLD_PATH = "../cc/bf16/"  # old_kernels removed, use bf16
 
 BATCH = 1
 SEQ = 32              # action sequence length

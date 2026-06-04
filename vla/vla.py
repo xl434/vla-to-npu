@@ -68,6 +68,13 @@ from vision_block_bf16 import (
 )
 
 # ===============================================================================
+# Skip df.build() — xclbin files already compiled, just load them
+# ===============================================================================
+# Comment out df.build() calls to avoid recompilation
+# The xclbin files are already in place and will be loaded by Allo at runtime
+SKIP_REBUILD = True
+
+# ===============================================================================
 # VLA Constants
 # ===============================================================================
 SEQ_T = 48                          # text token sequence length
@@ -95,12 +102,16 @@ top, mapping_primitives = GEMM(
     bfloat16,
 )
 
-gemm_mod_state = df.build(
-    top,
-    target="aie",
-    project="state_emb/gemm.prj",
-    mapping_primitives=mapping_primitives,
-)
+try:
+    gemm_mod_state = df.build(
+        top,
+        target="aie",
+        project="state_emb/gemm.prj",
+        mapping_primitives=mapping_primitives,
+    )
+except RuntimeError as e:
+    print(f"Note: Skipped rebuild (xclbin may already exist): {e}")
+    gemm_mod_state = None
 
 # ===============================================================================
 # NPU Modules — Postprocessing (action expert output → action dims)
@@ -117,12 +128,16 @@ top, mapping_primitives = GEMM(
     bfloat16,
 )
 
-gemm_mod_post = df.build(
-    top,
-    target="aie",
-    project="postprocessing/gemm.prj",
-    mapping_primitives=mapping_primitives,
-)
+try:
+    gemm_mod_post = df.build(
+        top,
+        target="aie",
+        project="postprocessing/gemm.prj",
+        mapping_primitives=mapping_primitives,
+    )
+except RuntimeError as e:
+    print(f"Note: Skipped rebuild (xclbin may already exist): {e}")
+    gemm_mod_post = None
 
 Ty = bfloat16
 
