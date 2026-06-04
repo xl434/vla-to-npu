@@ -297,31 +297,26 @@ def preproc_ref(input: np.ndarray, params: dict):
 def vit_ref(num_layers, input, params: dict):
     """Vision ViT encoder on CPU."""
     ref_model = MiniVit().eval()
-    ref_model.attn.in_proj_weight.data = torch.tensor(
-        np.concatenate([
-            params["Wq"].T.astype(np.float32),
-            params["Wk"].T.astype(np.float32),
-            params["Wv"].T.astype(np.float32),
-        ], axis=0)
-    )
-    ref_model.attn.out_proj.weight.data = torch.tensor(params["Wo"].T.astype(np.float32))
+    ref_model.attn.q_proj.weight.data   = torch.tensor(params["Wq"].T.astype(np.float32))
+    ref_model.attn.k_proj.weight.data   = torch.tensor(params["Wk"].T.astype(np.float32))
+    ref_model.attn.v_proj.weight.data   = torch.tensor(params["Wv"].T.astype(np.float32))
+    ref_model.attn.output_proj.weight.data = torch.tensor(params["Wo"].T.astype(np.float32))
     ref_model.ffn_up.weight.data        = torch.tensor(params["W_up"].T.astype(np.float32))
     ref_model.ffn_down.weight.data      = torch.tensor(params["W_down"].T.astype(np.float32))
     ref_model.ln_1.weight.data          = torch.tensor(params["W_norm_1"].astype(np.float32))
-    ref_model.ln_1.bias.data            = torch.tensor(params["b_norm_1"].astype(np.float32))
     ref_model.ln_2.weight.data          = torch.tensor(params["W_norm_2"].astype(np.float32))
-    ref_model.ln_2.bias.data            = torch.tensor(params["b_norm_2"].astype(np.float32))
     ref_model.to(torch.bfloat16)
+    input = torch.tensor(input.astype(np.float32)).unsqueeze(0).to(torch.bfloat16)
     for _ in range(num_layers):
         with torch.no_grad():
             input = ref_model(input)
-    return input.float().numpy().astype(np_bfloat16)
+    return input.squeeze(0).float().numpy().astype(np_bfloat16)
 
 
 def con_ref(input: np.ndarray, params: dict):
     """Connector linear transformation on CPU."""
     input = input.reshape(32, 32, 768).reshape(32, 8, 3072).transpose(1, 0, 2).reshape(8, 8, 12288).transpose(1, 0, 2).reshape(64, 12288)
-    ref = input @ params["W"]
+    ref = (input @ params["W"]).astype(np_bfloat16)
     return ref
 
 
