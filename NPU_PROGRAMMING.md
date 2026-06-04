@@ -11,8 +11,7 @@ Write and test Allo code directly:
 - Run Allo to compile individual kernels
 - Test each kernel against PyTorch reference
 - Use `vla.py` to run end-to-end with individual kernels
-- Result: ~23 seconds end-to-end
-- **Benefits:** Easy to implement, test, and debug
+- **Benefits:** Easy to implement, test, and debug, but slower due to overhead from allo
 
 ### Path 2: Allo + Claude-Generated Unified.prj (Optimized Implementation)
 
@@ -20,8 +19,7 @@ After Allo code works, optimize with unified binaries:
 - Keep Allo code unchanged
 - Claude generates `unified.prj` (C++ combining all kernels)
 - Use `vla_standalone.py` to run end-to-end with unified binary
-- Result: ~6.16 seconds end-to-end (3.7× faster)
-- **Benefits:** Fast end-to-end, still maintains correctness
+- **Benefits:** Much faster end-to-end, still maintains correctness
 
 **Workflow:**
 ```
@@ -80,7 +78,7 @@ RMS Norm with Allo:
 
 ### The Problem: Per-Kernel Overhead
 
-When running multiple Allo kernels with `vla_standalone.py`:
+When running multiple kernels with allo:
 
 ```python
 # vla.py (calls Allo kernels individually)
@@ -116,7 +114,7 @@ Claude generates a single C++ executable that:
 
 **Benefits:**
 - ✅ Single XRT launch per component (vs 36 for 12 layers × 3 ops/layer)
-- ✅ Zero DMA between kernels (data stays in NPU memory)
+- ✅ No DMA between kernels (data stays in NPU memory)
 - ✅ Predictable, composable performance
 - ✅ Faster end-to-end (6.16s vs 23s)
 
@@ -149,99 +147,57 @@ cc/bf16_vla/my_kernel_bf16.cc
 vla/my_component_bf16.py  (uses my_kernel_bf16.cc)
 ```
 
-**Step 3: Compile with Allo**
+**Step 3: Compile and Test with Allo**
 
 ```bash
 python vla/my_component_bf16.py
 # Generates: vla/my_component/my_kernel.prj/build/final.xclbin
+# Allo also runs on NPU so you can verify if the computation is correct
 ```
 
-**Step 4: Test the Allo kernel**
+**Step 4: Ask Claude to generate unified.prj**
 
-```bash
-python kernel_testing/my_kernel/test_my_kernel.py
-# Should PASS — kernel runs correctly on NPU
-```
-
-**Step 5: Ask Claude to generate unified.prj**
-
-Only after Allo kernels are tested and working, use this prompt:
+Only after Allo kernels are tested and working, use this simple prompt:
 
 ---
 
-### Claude Prompt Template
+### Claude Prompt (Simple)
 
 ```
-Generate a unified C++ executable for [COMPONENT_NAME].
+Generate unified.prj/test.cpp for [COMPONENT_NAME].
 
-REQUIRED CHANGES (replace with your values):
-- [COMPONENT_PATH] = vla/text_encoder_bf16 (example)
-- [KERNEL_LIST] = list of .prj directories to include
-- [LAYER_COUNT] = number of transformer layers (e.g., 12)
-- [COMPUTATION_PATTERN] = pattern of kernel calls per layer
+Reference the Allo code at:
+- vla/[COMPONENT_NAME].py (main component code)
+- vla/[COMPONENT_NAME]/*.py (individual kernel mappings)
+- cc/bf16_vla/*.cc (kernel sources)
 
-KERNEL DETAILS:
-List the .prj directories that exist and are compiled:
-- [COMPONENT_PATH]/rms_norm.prj/build/final.xclbin
-- [COMPONENT_PATH]/attention.prj/build/final.xclbin
-- [COMPONENT_PATH]/mlp.prj/build/final.xclbin
-(examples for text encoder; your kernels may differ)
+Generate vla/[COMPONENT_NAME]/unified.prj/test.cpp that:
+1. Calls all kernels in the same order as the Allo code
+2. Keeps intermediate data in NPU memory (no DMA between kernels)
+3. Uses the same input/output shapes as Allo code
 
-EXPECTED COMPUTATION FLOW:
-For each layer:
-1. Call [kernel_1] (e.g., rms_norm)
-2. Call [kernel_2] (e.g., attention)
-3. Call [kernel_3] (e.g., mlp)
-Repeat for [LAYER_COUNT] layers.
-
-INPUT/OUTPUT SPECS:
-- Input: [input_shape] (e.g., [1, 48, 960] for text encoder)
-- Output: [output_shape] (e.g., [1, 48, 960])
-- Intermediate data stays in NPU memory between kernels
-
-TASK:
-Generate [COMPONENT_PATH]/unified.prj/test.cpp that:
-1. Includes headers for all kernels from [KERNEL_LIST]
-2. Implements main() that calls kernels in [COMPUTATION_PATTERN]
-3. Manages data flow: input → layer 1 → layer 2 → ... → [LAYER_COUNT] → output
-4. Uses in-place computation where possible
-5. Compiles without errors
-6. When compiled and run, produces same outputs as individual Allo kernels
-
-Verify correctness by comparing unified.prj output vs individual Allo kernel outputs.
+CRITICAL REQUIREMENT:
+After compiling, verify that unified.prj output EXACTLY matches 
+the output from running individual Allo kernels.
 ```
 
-### Example Usage
+### Example
 
 If generating unified.prj for text encoder:
 
 ```
-Generate a unified C++ executable for text_encoder_bf16.
+Generate unified.prj/test.cpp for text_encoder_bf16.
 
-REQUIRED CHANGES:
-- [COMPONENT_PATH] = vla/text_encoder_bf16
-- [KERNEL_LIST] = rms_norm, attention, mlp (3 kernels per layer)
-- [LAYER_COUNT] = 12
-- [COMPUTATION_PATTERN] = RMSNorm → Attention → MLP, repeat 12 times
+Reference the Allo code at:
+- vla/text_encoder_bf16.py
+- vla/llama_block_rope_bf16.py
+- cc/bf16_vla/*.cc
 
-KERNEL DETAILS:
-These .prj directories exist and are compiled:
-- vla/text_encoder_bf16/rms_norm.prj/build/final.xclbin
-- vla/text_encoder_bf16/attn.prj/build/final.xclbin
-- vla/text_encoder_bf16/mlp.prj/build/final.xclbin
+Generate vla/text_encoder_bf16/unified.prj/test.cpp that calls
+kernels in the same order as text_encoder_bf16.py, with intermediate
+data staying in NPU memory.
 
-EXPECTED COMPUTATION FLOW:
-For each of 12 layers:
-1. Call rms_norm
-2. Call attention
-3. Call mlp
-
-INPUT/OUTPUT SPECS:
-- Input: [1, 48, 960] (sequence_len=48, embed_dim=960)
-- Output: [1, 48, 960]
-
-TASK:
-Generate vla/text_encoder_bf16/unified.prj/test.cpp...
+CRITICAL: Verify output matches running individual Allo kernels.
 ```
 
 **Step 6: Compile unified.prj**
@@ -305,26 +261,27 @@ Allo optimizes individual kernels but doesn't automatically:
 2. Write Allo code:
    vla/my_component_bf16.py
 
-3. Run Allo to compile:
-   Allo compiler generates:
-   → my_component/my_kernel.prj/build/final.xclbin
-   
-4. Test Allo kernel:
-   python kernel_testing/my_kernel/test_my_kernel.py
-   (Should PASS)
+3. Run Allo to compile and test:
+   python vla/my_component_bf16.py
+   Generates: my_component/my_kernel.prj/build/final.xclbin
+   (Verify it runs correctly on NPU)
 
-5. Ask Claude for unified.prj:
-   Claude generates:
-   → vla/my_component/unified.prj/test.cpp
+4. Ask Claude for unified.prj:
+   - Point Claude to Allo code files
+   - Claude generates: vla/my_component/unified.prj/test.cpp
+   - Key requirement: computation must match Allo code
 
-6. Compile unified.prj:
-   CMake + make
-   → vla/my_component/unified.prj/build/my_component_executable
+5. Compile unified.prj:
+   cd vla/my_component/unified.prj/build
+   cmake .. && make -j4
 
-7. Run vla_standalone.py:
-   vla_standalone.py calls:
-   → vla/my_component/unified.prj/build/my_component_executable
-   
+6. Verify correctness:
+   Run unified.prj binary
+   Compare output with individual Allo kernel outputs
+   ✅ Must match exactly
+
+7. Use with vla_standalone.py:
+   vla_standalone.py calls unified binary
    Result: ~6.16 seconds end-to-end ✅
 ```
 
