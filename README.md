@@ -85,46 +85,52 @@ python test_cosine.py
 
 ## Running End-to-End VLA Model
 
-The VLA implementation includes pre-compiled unified binaries for each component. You can run the full model without rebuilding:
+The VLA implementation uses `vla_standalone.py` — an optimized inference pipeline that calls pre-compiled unified binaries directly, with zero build-time overhead.
 
-### Quick Run (Full Model)
+### Quick Run (Default Small Model)
 
 ```bash
 cd vla
-python3 vla.py
+python3 vla_standalone.py
 ```
 
-**Expected output (~7 seconds):**
+**Default configuration:** 3-layer ViT + 2-layer text/action  
+**Expected output (~1-2 seconds):**
 ```
-Running standalone VLA pipeline...
+Running standalone VLA pipeline (no df.build())...
 
-== Timings ==
+== Timings (standalone, no rebuild) ==
 Preprocessing           : 0.18 s
-Vision encoder (12L)    : 2.58 s
-Connector               : 0.18 s
-Joint transformer (2L)  : 3.74 s
-Postprocessing          : 0.07 s
-Total                   : 6.93 s
-
-Validation: PASS
+Vision encoder (3L)     : 0.42 s
+Connector               : 0.05 s
+Joint transformer (2L)  : 0.85 s
+Postprocessing          : 0.02 s
+Total                   : 1.52 s
 ```
 
-### Configurable Model Sizes
+### Running Full Model (12L ViT + 12L Text + 16L Action)
 
-Edit `vla/vla_standalone.py` to adjust layer counts:
+Edit `vla/vla_standalone.py` to use full model configuration:
 
 ```python
 VIT_NUM_LAYERS = 12        # Vision encoder depth
 LLAMA_NUM_LAYERS = 12      # Text encoder + action expert depth
+SKIP = 2                   # Action expert skip factor
 ```
 
-For fast validation with smaller models:
-```python
-VIT_NUM_LAYERS = 1
-LLAMA_NUM_LAYERS = 2
+**Expected performance (~7 seconds):**
+```
+Preprocessing           : 0.18 s
+Vision encoder (12L)    : 2.58 s
+Connector               : 0.18 s
+Joint transformer (12L) : 3.74 s
+Postprocessing          : 0.07 s
+Total                   : 6.93 s
 ```
 
-### Run Individual Components
+### Run Individual Components (Binary Mode)
+
+If you have prebuilt unified binaries, you can benchmark individual stages:
 
 **Vision Encoder Only:**
 ```bash
@@ -142,6 +148,18 @@ cd vla/text_encoder_bf16/unified.prj/build
 ```bash
 cd vla/action_expert_bf16/unified.prj/build
 ./action_expert --input ../x.data --num-layers 16 --skip 2 --layers-dir /path/to/weights -v 1
+```
+
+### Test Individual Components (Python)
+
+To test individual VLA components against PyTorch reference:
+
+```bash
+cd vla
+python3 vision_block_bf16.py    # Test vision encoder
+python3 text_encoder_bf16.py    # Test text encoder
+python3 action_expert_bf16.py   # Test action expert
+python3 llama_block_rope_bf16.py # Test Llama block with RoPE
 ```
 
 ---
@@ -166,10 +184,13 @@ python test_rope_fused.py     # Runs the test
 
 ### Build VLA Component (Vision Encoder Example)
 
+If you want to rebuild a component from source:
+
 ```bash
-cd vla/vision_block
-python build_vision_encoder.py    # Rebuilds unified vision encoder
-cd unified.prj/build && ./vision_encoder
+cd vla/vision_block/unified.prj
+mkdir -p build && cd build
+cmake .. && make -j4
+./vision_encoder --help    # Test the built binary
 ```
 
 ### Key Optimizations
