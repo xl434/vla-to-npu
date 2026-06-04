@@ -31,10 +31,11 @@ TEXT_FFN_HID = 2560
 
 # Action Expert dimensions
 EMBD_EXP = 768
-EXP_Q_H = 12
-EXP_KV_H = 4
+EXP_Q_H = 15
+EXP_KV_H = 5
 EXP_HEAD_DIM = 64
 EXP_FFN_HID = 2048
+EXP_KV_DIM = EXP_KV_H * EXP_HEAD_DIM  # 320
 
 # Vision (ViT) dimensions
 EMBD_VIT = 768
