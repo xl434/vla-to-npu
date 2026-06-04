@@ -7,29 +7,12 @@ import numpy as np
 from ml_dtypes import bfloat16 as np_bfloat16
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torchtune.modules import MultiHeadAttention
 
-# Import only the constants and PyTorch model classes (not Allo stuff)
-from preprocessing_fused_bf16 import (
-    CHANNELS as CH, PIX_LEN as PIX, KERNEL_H as KERNEL_DIM, EMBD_DIM as EMBD_P,
-)
-
-from connector_bf16 import TEXT
-
-from text_encoder_bf16 import (
-    EMBD as EMBD_TEXT,
-    TextEncoderBlock,
-)
-
-from action_expert_bf16 import (
-    EMBD as EMBD_EXP,
-    ActionExpertSelfBlock, ActionExpertCrossBlock,
-)
-
-from vision_block_bf16 import MiniVit
-
-# VLA Constants (from vla.py)
+# VLA Constants (from vla.py and component files)
 SEQ_T = 48
-EMBD_S = TEXT  # 960
+EMBD_S = 960  # TEXT (no import from connector_bf16)
 SEQ_S = 1
 PADDING = 15
 VIT_NUM_LAYERS = 12
@@ -37,7 +20,259 @@ LLAMA_NUM_LAYERS = 12
 SKIP = 2
 TEXT_VOCAB_SIZE = 49280
 MAX_STATE_DIM = 32
-CHUNK_SIZE = 32  # EXP_SEQ
+CHUNK_SIZE = 32
+
+# Text Encoder dimensions
+EMBD_TEXT = 960
+TEXT_Q_H = 15
+TEXT_KV_H = 5
+TEXT_HEAD_DIM = 64
+TEXT_FFN_HID = 2560
+
+# Action Expert dimensions
+EMBD_EXP = 768
+EXP_Q_H = 12
+EXP_KV_H = 4
+EXP_HEAD_DIM = 64
+EXP_FFN_HID = 2048
+
+# Vision (ViT) dimensions
+EMBD_VIT = 768
+VIT_Q_H = 12
+VIT_KV_H = 12
+VIT_HEAD_DIM = 64
+VIT_FFN_HID = 3072
+
+# Preprocessing
+CH = 3
+PIX = 512
+KERNEL_DIM = 16
+EMBD_P = 768
+
+# ============================================================
+# PyTorch Model Classes (no Allo imports)
+# ============================================================
+
+class TextEncoderBlock(nn.Module):
+    """Text encoder transformer block with RoPE."""
+    def __init__(self):
+        super().__init__()
+        q_proj = nn.Linear(EMBD_TEXT, TEXT_Q_H * TEXT_HEAD_DIM, bias=False)
+        k_proj = nn.Linear(EMBD_TEXT, TEXT_KV_H * TEXT_HEAD_DIM, bias=False)
+        v_proj = nn.Linear(EMBD_TEXT, TEXT_KV_H * TEXT_HEAD_DIM, bias=False)
+        o_proj = nn.Linear(TEXT_Q_H * TEXT_HEAD_DIM, EMBD_TEXT, bias=False)
+        self.attn = MultiHeadAttention(
+            embed_dim=TEXT_Q_H * TEXT_HEAD_DIM, num_heads=TEXT_Q_H, num_kv_heads=TEXT_KV_H,
+            head_dim=TEXT_HEAD_DIM, q_proj=q_proj, k_proj=k_proj, v_proj=v_proj,
+            output_proj=o_proj, is_causal=True,
+        )
+        self.gate_proj = nn.Linear(EMBD_TEXT, TEXT_FFN_HID, bias=False)
+        self.ln_1 = nn.RMSNorm(EMBD_TEXT, elementwise_affine=True)
+        self.up_proj = nn.Linear(EMBD_TEXT, TEXT_FFN_HID, bias=False)
+        self.down_proj = nn.Linear(TEXT_FFN_HID, EMBD_TEXT, bias=False)
+        self.silu = nn.SiLU()
+        self.ln_2 = nn.RMSNorm(EMBD_TEXT, elementwise_affine=True)
+        self.max_wavelength = 10_000.0
+        self.head_dim = TEXT_HEAD_DIM
+        d_half = self.head_dim // 2
+        freq_exponents = (2.0 / self.head_dim) * torch.arange(d_half, dtype=torch.float32)
+        timescale = self.max_wavelength ** freq_exponents
+        self.register_buffer("rope_timescale", timescale, persistent=False)
+        self.register_buffer("pos_cache", torch.arange(0, 1, dtype=torch.float32), persistent=False)
+
+    def _positions(self, L, device):
+        if self.pos_cache.numel() < L:
+            self.pos_cache = torch.arange(L, dtype=torch.float32, device=device)
+        return self.pos_cache[:L].unsqueeze(0)
+
+    def apply_rope(self, x, positions):
+        B, L, H, D = x.shape
+        d_half = D // 2
+        ts = self.rope_timescale.to(x.device)
+        radians = positions.to(torch.float32)[..., None] / ts[None, None, :]
+        radians = radians[..., None, :]
+        x = x.to(torch.float32)
+        x1, x2 = x.split(d_half, dim=-1)
+        s, c = torch.sin(radians), torch.cos(radians)
+        out = torch.empty_like(x)
+        out[..., :d_half] = x1 * c - x2 * s
+        out[..., d_half:] = x2 * c + x1 * s
+        return out.to(x.dtype)
+
+    def forward(self, x):
+        residual = x
+        x = self.ln_1(x)
+        B, L, _ = x.shape
+        D = self.head_dim
+        q = self.attn.q_proj(x).view(B, L, TEXT_Q_H, D)
+        k = self.attn.k_proj(x).view(B, L, TEXT_KV_H, D)
+        v = self.attn.v_proj(x).view(B, L, TEXT_KV_H, D)
+        pos = self._positions(L, x.device).expand(B, -1)
+        q = self.apply_rope(q, pos)
+        k = self.apply_rope(k, pos)
+        kv_map = torch.div(torch.arange(TEXT_Q_H, device=x.device) * TEXT_KV_H, TEXT_Q_H, rounding_mode='floor')
+        k_sel = k.index_select(dim=2, index=kv_map)
+        v_sel = v.index_select(dim=2, index=kv_map)
+        q_h = q.transpose(1, 2)
+        k_h = k_sel.transpose(1, 2)
+        scores = torch.matmul(q_h.float(), k_h.float().transpose(-2, -1)) / (D ** 0.5)
+        scores.masked_fill_(torch.ones(L, L, device=x.device).triu(1).bool(), float("-inf"))
+        attn = torch.softmax(scores, dim=-1).to(torch.bfloat16)
+        v_h = v_sel.transpose(1, 2)
+        ctx = torch.matmul(attn.float(), v_h.float()).to(torch.bfloat16).transpose(1, 2).contiguous().view(B, L, TEXT_Q_H * D)
+        x = self.attn.output_proj(ctx) + residual
+        residual = x
+        x = self.ln_2(x)
+        act = self.silu(self.gate_proj(x)) * self.up_proj(x)
+        x = self.down_proj(act) + residual
+        k_out = self.attn.k_proj(self.ln_1(residual)).view(B, L, TEXT_KV_H, D)
+        v_out = self.attn.v_proj(self.ln_1(residual)).view(B, L, TEXT_KV_H, D)
+        return x, k_out.squeeze(0).reshape(L, TEXT_KV_H * D), v_out.squeeze(0).reshape(L, TEXT_KV_H * D)
+
+
+class ActionExpertSelfBlock(nn.Module):
+    """Action expert self-attention block."""
+    def __init__(self):
+        super().__init__()
+        self.ln_1 = nn.RMSNorm(EMBD_EXP, elementwise_affine=True)
+        self.q_proj = nn.Linear(EMBD_EXP, EXP_Q_H * EXP_HEAD_DIM, bias=False)
+        self.k_proj = nn.Linear(EMBD_EXP, EXP_KV_H * EXP_HEAD_DIM, bias=False)
+        self.v_proj = nn.Linear(EMBD_EXP, EXP_KV_H * EXP_HEAD_DIM, bias=False)
+        self.o_proj = nn.Linear(EXP_Q_H * EXP_HEAD_DIM, EMBD_EXP, bias=False)
+        self.ln_2 = nn.RMSNorm(EMBD_EXP, elementwise_affine=True)
+        self.gate_proj = nn.Linear(EMBD_EXP, EXP_FFN_HID, bias=False)
+        self.up_proj = nn.Linear(EMBD_EXP, EXP_FFN_HID, bias=False)
+        self.down_proj = nn.Linear(EXP_FFN_HID, EMBD_EXP, bias=False)
+        self.silu = nn.SiLU()
+        self.max_wavelength = 10_000.0
+        d_half = EXP_HEAD_DIM // 2
+        freq_exponents = (2.0 / EXP_HEAD_DIM) * torch.arange(d_half, dtype=torch.float32)
+        timescale = self.max_wavelength ** freq_exponents
+        self.register_buffer("rope_timescale", timescale, persistent=False)
+
+    def apply_rope(self, x, L):
+        B, _, H, D = x.shape
+        d_half = D // 2
+        ts = self.rope_timescale.to(x.device)
+        positions = torch.arange(L, dtype=torch.float32, device=x.device).unsqueeze(0).expand(B, -1)
+        radians = positions.to(torch.float32)[..., None] / ts[None, None, :]
+        radians = radians[..., None, :]
+        x = x.to(torch.float32)
+        x1, x2 = x.split(d_half, dim=-1)
+        s, c = torch.sin(radians), torch.cos(radians)
+        out = torch.empty_like(x)
+        out[..., :d_half] = x1 * c - x2 * s
+        out[..., d_half:] = x2 * c + x1 * s
+        return out.to(x.dtype)
+
+    def forward(self, x):
+        residual = x
+        x = self.ln_1(x)
+        B, L, _ = x.shape
+        q = self.q_proj(x).view(B, L, EXP_Q_H, EXP_HEAD_DIM)
+        k = self.k_proj(x).view(B, L, EXP_KV_H, EXP_HEAD_DIM)
+        v = self.v_proj(x).view(B, L, EXP_KV_H, EXP_HEAD_DIM)
+        q = self.apply_rope(q, L)
+        k = self.apply_rope(k, L)
+        kv_map = torch.div(torch.arange(EXP_Q_H, device=x.device) * EXP_KV_H, EXP_Q_H, rounding_mode='floor')
+        k_sel = k.index_select(2, kv_map)
+        v_sel = v.index_select(2, kv_map)
+        q_h = q.transpose(1, 2).float()
+        k_h = k_sel.transpose(1, 2).float()
+        scores = torch.matmul(q_h, k_h.transpose(-2, -1)) / (EXP_HEAD_DIM ** 0.5)
+        scores.masked_fill_(torch.ones(L, L, device=x.device).triu(1).bool(), float("-inf"))
+        attn = torch.softmax(scores, dim=-1).to(torch.bfloat16)
+        v_h = v_sel.transpose(1, 2)
+        ctx = torch.matmul(attn.float(), v_h.float()).to(torch.bfloat16)
+        ctx = ctx.transpose(1, 2).contiguous().view(B, L, EXP_Q_H * EXP_HEAD_DIM)
+        x = self.o_proj(ctx) + residual
+        residual = x
+        x = self.ln_2(x)
+        x = self.down_proj(self.silu(self.gate_proj(x)) * self.up_proj(x)) + residual
+        return x
+
+
+class ActionExpertCrossBlock(nn.Module):
+    """Action expert cross-attention block."""
+    def __init__(self):
+        super().__init__()
+        self.ln_1 = nn.RMSNorm(EMBD_EXP, elementwise_affine=True)
+        self.q_proj = nn.Linear(EMBD_EXP, EXP_Q_H * EXP_HEAD_DIM, bias=False)
+        self.k_proj = nn.Linear(TEXT_KV_H * TEXT_HEAD_DIM, TEXT_KV_H * TEXT_HEAD_DIM, bias=False)
+        self.v_proj = nn.Linear(TEXT_KV_H * TEXT_HEAD_DIM, TEXT_KV_H * TEXT_HEAD_DIM, bias=False)
+        self.o_proj = nn.Linear(EXP_Q_H * EXP_HEAD_DIM, EMBD_EXP, bias=False)
+        self.ln_2 = nn.RMSNorm(EMBD_EXP, elementwise_affine=True)
+        self.gate_proj = nn.Linear(EMBD_EXP, EXP_FFN_HID, bias=False)
+        self.up_proj = nn.Linear(EMBD_EXP, EXP_FFN_HID, bias=False)
+        self.down_proj = nn.Linear(EXP_FFN_HID, EMBD_EXP, bias=False)
+        self.silu = nn.SiLU()
+
+    def forward(self, x, k, v):
+        residual = x
+        x = self.ln_1(x)
+        B, L, _ = x.shape
+        q = self.q_proj(x).view(B, L, EXP_Q_H, EXP_HEAD_DIM)
+        k_proj = k.view(B, -1, TEXT_KV_H, TEXT_HEAD_DIM)
+        v_proj = v.view(B, -1, TEXT_KV_H, TEXT_HEAD_DIM)
+        kv_map = torch.div(torch.arange(EXP_Q_H, device=x.device) * TEXT_KV_H, EXP_Q_H, rounding_mode='floor')
+        k_sel = k_proj.index_select(2, kv_map)
+        v_sel = v_proj.index_select(2, kv_map)
+        q_h = q.transpose(1, 2).float()
+        k_h = k_sel.transpose(1, 2).float()
+        scores = torch.matmul(q_h, k_h.transpose(-2, -1)) / (EXP_HEAD_DIM ** 0.5)
+        attn = torch.softmax(scores, dim=-1).to(torch.bfloat16)
+        v_h = v_sel.transpose(1, 2)
+        ctx = torch.matmul(attn.float(), v_h.float()).to(torch.bfloat16)
+        ctx = ctx.transpose(1, 2).contiguous().view(B, L, EXP_Q_H * EXP_HEAD_DIM)
+        x = self.o_proj(ctx) + residual
+        residual = x
+        x = self.ln_2(x)
+        x = self.down_proj(self.silu(self.gate_proj(x)) * self.up_proj(x)) + residual
+        return x
+
+
+class MiniVit(nn.Module):
+    """Vision ViT block."""
+    def __init__(self):
+        super().__init__()
+        q_proj = nn.Linear(EMBD_VIT, VIT_Q_H * VIT_HEAD_DIM, bias=False)
+        k_proj = nn.Linear(EMBD_VIT, VIT_KV_H * VIT_HEAD_DIM, bias=False)
+        v_proj = nn.Linear(EMBD_VIT, VIT_KV_H * VIT_HEAD_DIM, bias=False)
+        o_proj = nn.Linear(VIT_Q_H * VIT_HEAD_DIM, EMBD_VIT, bias=False)
+        self.attn = MultiHeadAttention(
+            embed_dim=VIT_Q_H * VIT_HEAD_DIM, num_heads=VIT_Q_H, num_kv_heads=VIT_KV_H,
+            head_dim=VIT_HEAD_DIM, q_proj=q_proj, k_proj=k_proj, v_proj=v_proj,
+            output_proj=o_proj, is_causal=False,
+        )
+        self.ffn_up = nn.Linear(EMBD_VIT, VIT_FFN_HID, bias=False)
+        self.ffn_down = nn.Linear(VIT_FFN_HID, EMBD_VIT, bias=False)
+        self.ln_1 = nn.RMSNorm(EMBD_VIT, elementwise_affine=True)
+        self.ln_2 = nn.RMSNorm(EMBD_VIT, elementwise_affine=True)
+        self.gelu = nn.GELU()
+
+    def forward(self, x):
+        residual = x
+        x = self.ln_1(x)
+        B, L, _ = x.shape
+        D = VIT_HEAD_DIM
+        q = self.attn.q_proj(x).view(B, L, VIT_Q_H, D)
+        k = self.attn.k_proj(x).view(B, L, VIT_KV_H, D)
+        v = self.attn.v_proj(x).view(B, L, VIT_KV_H, D)
+        kv_map = torch.div(torch.arange(VIT_Q_H, device=x.device) * VIT_KV_H, VIT_Q_H, rounding_mode='floor')
+        k_sel = k.index_select(dim=2, index=kv_map)
+        v_sel = v.index_select(dim=2, index=kv_map)
+        q_h = q.transpose(1, 2)
+        k_h = k_sel.transpose(1, 2)
+        scores = torch.matmul(q_h.float(), k_h.float().transpose(-2, -1)) / (D ** 0.5)
+        attn = torch.softmax(scores, dim=-1).to(torch.bfloat16)
+        v_h = v_sel.transpose(1, 2)
+        ctx = torch.matmul(attn.float(), v_h.float()).to(torch.bfloat16).transpose(1, 2).contiguous().view(B, L, VIT_Q_H * D)
+        x = self.attn.output_proj(ctx) + residual
+        residual = x
+        x = self.ln_2(x)
+        x = self.ffn_down(self.gelu(self.ffn_up(x))) + residual
+        return x
+
 
 # ============================================================
 # Pure PyTorch Reference Functions (CPU only, no NPU/Allo)
@@ -136,6 +371,11 @@ def make_exp_cross_ref(params):
     return ref
 
 
+def action_expert_cross_forward(x, k, v):
+    """Cross-attention forward with pre-computed k,v."""
+    return x.forward(k, v)
+
+
 def joint_transformer_ref(num_layers, vlm_input, action, params_vlm,
                           params_exp_self, params_exp_cross):
     """Joint text+action transformer on CPU."""
@@ -152,7 +392,8 @@ def joint_transformer_ref(num_layers, vlm_input, action, params_vlm,
             if i % SKIP == 0:
                 act_t = exp_self_ref(act_t)
             else:
-                act_t = exp_cross_ref(act_t, text_k.unsqueeze(0), text_v.unsqueeze(0))
+                # text_k, text_v have shape [1, seq, kv_dim], we pass them directly
+                act_t = exp_cross_ref(act_t, text_k, text_v)
 
     act_out = act_t.squeeze(0).float().numpy().astype(np_bfloat16)
     return act_out
