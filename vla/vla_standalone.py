@@ -230,10 +230,11 @@ def main():
     # Validation (optional): Compare with PyTorch CPU reference
     # =====================================================================
     if "--validate" in sys.argv:
-        print("\n== Running CPU reference for validation ==")
+        print("\n== Running PyTorch CPU reference for validation ==")
         from vla import (
             preproc_ref, vit_ref, con_ref, joint_transformer_ref, postprocessing_ref
         )
+        torch.set_default_dtype(torch.float32)
 
         t_ref_0 = time.perf_counter()
         state_emb_ref = state_input @ weights
@@ -252,12 +253,12 @@ def main():
         v_t_ref = postprocessing_ref(out_ref, params_out)
         t_ref_5 = time.perf_counter()
 
-        print(f"\nPreprocessing           : {t_ref_1 - t_ref_0:.3f} s")
-        print(f"Vision encoder ({VIT_NUM_LAYERS}L)    : {t_ref_2 - t_ref_1:.3f} s")
-        print(f"Connector               : {t_ref_3 - t_ref_2:.3f} s")
-        print(f"Joint transformer ({LLAMA_NUM_LAYERS}L) : {t_ref_4 - t_ref_3:.3f} s")
-        print(f"Postprocessing          : {t_ref_5 - t_ref_4:.3f} s")
-        print(f"Total (CPU)             : {t_ref_5 - t_ref_0:.3f} s")
+        print(f"\nPreprocessing (PyTorch) : {t_ref_1 - t_ref_0:.3f} s")
+        print(f"Vision encoder (PyTorch): {t_ref_2 - t_ref_1:.3f} s")
+        print(f"Connector (PyTorch)     : {t_ref_3 - t_ref_2:.3f} s")
+        print(f"Joint transformer (PyTorch) : {t_ref_4 - t_ref_3:.3f} s")
+        print(f"Postprocessing (PyTorch): {t_ref_5 - t_ref_4:.3f} s")
+        print(f"Total (PyTorch CPU)     : {t_ref_5 - t_ref_0:.3f} s")
 
         # Compare outputs
         try:
