@@ -42,8 +42,8 @@ R = Layout.Replicate
 # Model Configuration
 # ===============================================================================
 KERNEL_LIB_PATH = "../cc/float/"
-KERNEL_BF16_PATH = "../cc/bf16_vla/"
-KERNEL_BF16_OLD_PATH = "../cc/bf16/"  # old_kernels removed, use bf16
+KERNEL_BF16_PATH = "../cc/bf16/"
+KERNEL_BF16_OLD_PATH = "../cc/bf16/"  # old_kernels removed, use bf16 directory
 
 BATCH = 1
 SEQ = 32              # action sequence length
@@ -61,7 +61,7 @@ assert HEAD_DIM % 64 == 0
 Ty = Ty_bf16
 NP_DTYPE = np_bfloat16
 LINEAR_TILE = 64
-ATTN_TILE = 8  # Must match softmax_128_bf16 kernel dimension [8][128]
+ATTN_TILE = 8  # Matches softmax_128_bf16 [8][128] tiles; Pm=Pn=Pk=1 handles vectorization
 
 # ===============================================================================
 # PyTorch Reference: Self-Attention Expert Block
@@ -215,7 +215,7 @@ class ActionExpertCrossBlock(nn.Module):
 # RMSNorm (bf16, width=768) — reuse existing kernel
 # ----------------------------------------------------------------
 norm = ExternalModule(
-    top="rms_norm",  # The actual function name in rms_norm_bf16.cc
+    top="rms_norm",
     impl_path=KERNEL_BF16_OLD_PATH + "rms_norm_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
@@ -274,32 +274,32 @@ gemm_out_kernel, gemm_out_mp = GEMM(
 # Self-attn score: 32 x 32 x 64 (Pm=1, Pn=1, Pk=2, tile=32)
 # Q_scaled[32,64] × K^T[64,32] → score[32,32]
 gemm_attn_self_score_kernel, gemm_attn_self_score_mp = GEMM(
-    SEQ, HEAD_DIM, SEQ,  # Q[SEQ, HEAD_DIM] × K_T[HEAD_DIM, SEQ] → Score[SEQ, SEQ]
-    SEQ // ATTN_TILE, HEAD_DIM // ATTN_TILE, SEQ // ATTN_TILE,
+    SEQ, SEQ, HEAD_DIM,
+    1, 1, 1,  # Test: Pm=1, Pn=1, Pk=1 for tile_M=32, tile_N=32, tile_K=64
     Ty, Ty,
 )
 
-# Self-attn value: 32 x 64 x 32 (Pm=1, Pn=2, Pk=1, tile=32)
+# Self-attn value: 32 x 64 x 32 (Pm=1, Pn=1, Pk=1, tile=32,64,32)
 # weights[32,32] × V[32,64] → out[32,64]
 gemm_attn_self_value_kernel, gemm_attn_self_value_mp = GEMM(
-    SEQ, SEQ, HEAD_DIM,  # Attn_weights[SEQ, SEQ] × V[SEQ, HEAD_DIM] → out[SEQ, HEAD_DIM]
-    SEQ // ATTN_TILE, SEQ // ATTN_TILE, HEAD_DIM // ATTN_TILE,
+    SEQ, HEAD_DIM, SEQ,
+    1, 1, 1,  # Pm=1, Pn=1, Pk=1 satisfies vectorization constraints
     Ty, Ty,
 )
 
-# Cross-attn score: 32 x 128 x 64 (Pm=1, Pn=4, Pk=2, tile=32)
+# Cross-attn score: 32 x 128 x 64 (Pm=1, Pn=1, Pk=1, tile=32,128,64)
 # Q_scaled[32,64] × K^T[64,128] → score[32,128]
 gemm_attn_cross_score_kernel, gemm_attn_cross_score_mp = GEMM(
-    SEQ, HEAD_DIM, TEXT_SEQ,  # Q[SEQ, HEAD_DIM] × K_T[HEAD_DIM, TEXT_SEQ] → Score[SEQ, TEXT_SEQ]
-    SEQ // ATTN_TILE, HEAD_DIM // ATTN_TILE, TEXT_SEQ // ATTN_TILE,
+    SEQ, TEXT_SEQ, HEAD_DIM,
+    1, 1, 1,  # Pm=1, Pn=1, Pk=1 satisfies vectorization constraints
     Ty, Ty,
 )
 
-# Cross-attn value: 32 x 64 x 128 (Pm=1, Pn=2, Pk=4, tile=32)
+# Cross-attn value: 32 x 64 x 128 (Pm=1, Pn=1, Pk=1, tile=32,64,128)
 # weights[32,128] × V[128,64] → out[32,64]
 gemm_attn_cross_value_kernel, gemm_attn_cross_value_mp = GEMM(
-    SEQ, TEXT_SEQ, HEAD_DIM,  # Attn_weights[SEQ, TEXT_SEQ] × V[TEXT_SEQ, HEAD_DIM] → out[SEQ, HEAD_DIM]
-    SEQ // ATTN_TILE, TEXT_SEQ // ATTN_TILE, HEAD_DIM // ATTN_TILE,
+    SEQ, HEAD_DIM, TEXT_SEQ,
+    1, 1, 1,  # Pm=1, Pn=1, Pk=1 satisfies vectorization constraints
     Ty, Ty,
 )
 
@@ -324,8 +324,8 @@ gemm_ffn_down_kernel, gemm_ffn_down_mp = GEMM(
 # Unmasked Softmax (bf16) — for cross-attention [32, 128]
 # ----------------------------------------------------------------
 softmax_cross_ext = ExternalModule(
-    top="softmax_128_bf16",  # Correct function name
-    impl_path=KERNEL_BF16_PATH + "softmax_128_bf16.cc",
+    top="softmax_128_bf16",
+    impl_path="../cc/bf16_vla/" + "softmax_128_bf16.cc",
     input_idx=[0],
     output_idx=[1],
 )
@@ -347,7 +347,7 @@ def softmax_cross_kernel(
 # ----------------------------------------------------------------
 silu_ext = ExternalModule(
     top="silu_256_bf16",
-    impl_path=KERNEL_BF16_PATH + "silu_256_bf16.cc",
+    impl_path="../cc/bf16_vla/" + "silu_256_bf16.cc",
     input_idx=[0],
     output_idx=[1],
 )
