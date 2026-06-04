@@ -2,8 +2,6 @@
 __pycache__
 *.json
 .claude/
-simulation/checkpoints/
-simulation/outputs/
 
 # Images and graphs
 *.png
@@ -25,3 +23,8 @@ Makefile
 # Allo kernel compilation artifacts
 top.mlir.prj/
 *.data
+*.prj/build/
+*.xclbin
+test_results*.log
+*.mlir
+trace.txt
