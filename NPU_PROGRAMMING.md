@@ -2,31 +2,37 @@
 
 This guide explains how to write kernels for AMD Phoenix NPU using the Allo compiler framework, and optionally how to optimize them with unified binaries for faster end-to-end performance.
 
-## Overview: Two Execution Paths
+## Overview: Two Development Paths
 
-### Current Implementation: vla_standalone.py + Unified.prj
+### Path 1: Allo Programming (Recommended for Development)
 
-**vla_standalone.py** currently requires unified.prj binaries:
-- Calls `vision_block/unified.prj/build/vision_encoder`
-- Calls `text_encoder_bf16/unified.prj/build/text_encoder`
-- Calls `action_expert_bf16/unified.prj/build/action_expert`
-- Result: ~6.16 seconds end-to-end
+Write and test Allo code directly:
+- Edit Python Allo code: `vla/my_component_bf16.py`
+- Run Allo to compile individual kernels
+- Test each kernel against PyTorch reference
+- Use `vla.py` to run end-to-end with individual kernels
+- Result: ~23 seconds end-to-end
+- **Benefits:** Easy to implement, test, and debug
 
-### Alternative: vla.py + Individual Allo Kernels
+### Path 2: Allo + Claude-Generated Unified.prj (Optimized Implementation)
 
-If you want to run individual Allo kernels without unified.prj:
-- Use `vla.py` instead of `vla_standalone.py`
-- Calls individual Allo kernels (rms_norm.prj, attention.prj, mlp.prj, etc.)
-- Each kernel call = one XRT launch
-- Result: ~23 seconds end-to-end (slower due to dispatch overhead)
-
-**Key insight:** Both paths run on NPU. Unified.prj is an optimization to reduce XRT overhead, not required for correctness.
+After Allo code works, optimize with unified binaries:
+- Keep Allo code unchanged
+- Claude generates `unified.prj` (C++ combining all kernels)
+- Use `vla_standalone.py` to run end-to-end with unified binary
+- Result: ~6.16 seconds end-to-end (3.7× faster)
+- **Benefits:** Fast end-to-end, still maintains correctness
 
 **Workflow:**
 ```
-Option A (Current): Allo → unified.prj → vla_standalone.py (~6.16s)
-Option B (Slower):  Allo → individual kernels → vla.py (~23s)
+Step 1: Allo Programming (verify correctness)
+        Write Allo code → Compile → Test with vla.py
+
+Step 2: Unified.prj Optimization (improve speed)
+        Ask Claude for unified.prj → Compile → Test with vla_standalone.py
 ```
+
+**Key insight:** Both paths run on NPU. Start with Allo programming for simplicity, then add unified.prj for speed.
 
 ---
 
@@ -36,30 +42,17 @@ Option B (Slower):  Allo → individual kernels → vla.py (~23s)
 
 **Kernel source:** `cc/bf16_vla/silu_128_bf16.cc`
 
-This implements SiLU (x * sigmoid(x)) for a 4×128 tile of bfloat16 data using AIE vectorization.
+This implements SiLU (x * sigmoid(x)) for a 4×128 tile of bfloat16 data using the [AMD AIE API](https://download.amd.com/docnav/aiengine/xilinx2022_2/aiengine_api/aie_api/doc/index.html) with vectorized Padé polynomial for sigmoid.
 
-**Key concepts:**
-- `aie::vector<T, N>` — vectorized operations (32 bfloat16 elements at once)
-- `aie::load_v` / `aie::store_v` — bulk data movement
-- Sigmoid via Padé polynomial approximation (fast, accurate on NPU)
-- Fixed tile size [4][128] optimized for SmolVLA action expert
-
-**See actual code:** `cc/bf16_vla/silu_128_bf16.cc` (vectorized Padé polynomial for sigmoid)
+**See actual code:** `cc/bf16_vla/silu_128_bf16.cc`
 
 **Test:** `kernel_testing/silu/test_silu_bf16_new.py` (validates against PyTorch)
 
 ---
 
-## Level 2: Allo Compiler (Dataflow Model on NPU)
+## Level 2: Allo Programming (Dataflow Model on NPU)
 
-Allo uses a **dataflow programming model** to express how kernels communicate via streams.
-
-### Key Allo Concepts
-
-- **Regions**: Define the dataflow graph with inputs/outputs
-- **Kernels**: Units of computation (run on NPU)
-- **Streams**: FIFO channels for inter-kernel communication
-- **Mapping**: Which processing elements (AIE cores) run each kernel
+Allo uses a **dataflow programming model** to express how kernels communicate via streams. See the [Allo dataflow documentation](https://cornell-zhang.github.io/allo/dive/dataflow.html) for details on regions, kernels, and streams.
 
 ### Example: RMS Norm with Allo
 
@@ -335,19 +328,19 @@ Allo optimizes individual kernels but doesn't automatically:
    Result: ~6.16 seconds end-to-end ✅
 ```
 
-### For Testing (Without Unified.prj)
+### Allo Programming (Without Unified.prj)
 
 ```
 1-4. Same as above (write kernel, Allo code, test)
 
-5. Run vla.py instead:
-   vla.py calls individual Allo kernels directly
-   Result: ~23 seconds end-to-end (slower)
+5. Run vla.py to test end-to-end:
+   Example: vla/vla.py calls individual Allo kernels directly
+   Result: ~23 seconds end-to-end
    
-   Use this when:
-   - Debugging individual kernels
-   - Don't need end-to-end optimization
-   - unified.prj not yet generated
+   Use for:
+   - Verifying Allo code correctness
+   - Debugging individual kernel behavior
+   - Before generating unified.prj
 ```
 
 ---
@@ -356,11 +349,12 @@ Allo optimizes individual kernels but doesn't automatically:
 
 | Concept | Details |
 |---------|---------|
-| **Allo code runs on NPU** | Yes, dataflow kernels execute on AIE cores |
-| **Unified.prj required?** | No, optional optimization for speed |
-| **When to use unified.prj** | When end-to-end speed matters (vs individual kernel correctness) |
-| **Prerequisites for unified.prj** | Allo kernels must be compiled and tested first |
-| **Claude's role** | Generates C++ that combines kernels efficiently |
+| **Allo Programming** | Write & test Allo code directly (easier, slower ~23s) |
+| **Unified.prj** | Claude-generated C++ combining kernels (faster ~6.16s) |
+| **Start with** | Allo programming (verify correctness) |
+| **Then optimize with** | Unified.prj (improve speed) |
+| **Prerequisites** | Allo kernels must be compiled and tested first |
+| **Example implementations** | vla.py (Allo), vla_standalone.py (unified.prj) |
 
 ---
 
