@@ -2,37 +2,31 @@
 
 This guide explains how to write kernels for AMD Phoenix NPU using the Allo compiler framework, and optionally how to optimize them with unified binaries for faster end-to-end performance.
 
-## Overview: Two Paths to NPU Execution
+## Overview: Two Execution Paths
 
-```
-Path 1: Allo Code (Dataflow Model) — RUNS ON NPU
-        ↓
-        Write Python Allo code
-        ↓
-        Allo compiler generates:
-        - .prj/build/final.xclbin (compiled binary)
-        - .prj/insts.txt (instructions)
-        ↓
-        vla_standalone.py calls each kernel
-        ↓
-        Result: Correct but slower (~23s end-to-end)
-        
-Path 2: Allo Code + Unified.prj (Optional Optimization)
-        ↓
-        Write Python Allo code (same as Path 1)
-        ↓
-        Allo compiler generates .xclbin files
-        ↓
-        Claude generates unified.prj (combines all kernels)
-        ↓
-        Compile unified.prj
-        ↓
-        vla_standalone.py calls single unified binary
-        ↓
-        Result: Faster (~6.16s end-to-end)
-```
+### Current Implementation: vla_standalone.py + Unified.prj
 
-**Key insight:** Both paths run on NPU. Unified.prj is purely an optimization for faster composition, not required.
+**vla_standalone.py** currently requires unified.prj binaries:
+- Calls `vision_block/unified.prj/build/vision_encoder`
+- Calls `text_encoder_bf16/unified.prj/build/text_encoder`
+- Calls `action_expert_bf16/unified.prj/build/action_expert`
+- Result: ~6.16 seconds end-to-end
+
+### Alternative: vla.py + Individual Allo Kernels
+
+If you want to run individual Allo kernels without unified.prj:
+- Use `vla.py` instead of `vla_standalone.py`
+- Calls individual Allo kernels (rms_norm.prj, attention.prj, mlp.prj, etc.)
+- Each kernel call = one XRT launch
+- Result: ~23 seconds end-to-end (slower due to dispatch overhead)
+
+**Key insight:** Both paths run on NPU. Unified.prj is an optimization to reduce XRT overhead, not required for correctness.
+
+**Workflow:**
+```
+Option A (Current): Allo → unified.prj → vla_standalone.py (~6.16s)
+Option B (Slower):  Allo → individual kernels → vla.py (~23s)
+```
 
 ---
 
@@ -309,34 +303,51 @@ Allo optimizes individual kernels but doesn't automatically:
 
 ## Summary: The Complete Workflow
 
+### For Best Performance (Recommended)
+
 ```
-User writes kernel source:
-  cc/bf16_vla/my_kernel_bf16.cc
+1. Write kernel source:
+   cc/bf16_vla/my_kernel_bf16.cc
 
-User writes Allo code:
-  vla/my_component_bf16.py
+2. Write Allo code:
+   vla/my_component_bf16.py
 
-Run Allo to compile:
-  ↓ (Allo compiler)
-  my_component/my_kernel.prj/build/final.xclbin
-  
-Test Allo kernel:
-  python kernel_testing/my_kernel/test_my_kernel.py
-  ↓ (PASS)
+3. Run Allo to compile:
+   Allo compiler generates:
+   → my_component/my_kernel.prj/build/final.xclbin
+   
+4. Test Allo kernel:
+   python kernel_testing/my_kernel/test_my_kernel.py
+   (Should PASS)
 
-Ask Claude for unified.prj:
-  ↓ (Claude generates)
-  vla/my_component/unified.prj/test.cpp
+5. Ask Claude for unified.prj:
+   Claude generates:
+   → vla/my_component/unified.prj/test.cpp
 
-Compile unified.prj:
-  ↓ (CMake + make)
-  vla/my_component/unified.prj/build/my_component_executable
+6. Compile unified.prj:
+   CMake + make
+   → vla/my_component/unified.prj/build/my_component_executable
 
-Run vla_standalone.py:
-  ↓
-  Calls: vla/my_component/unified.prj/build/my_component_executable
-  
-Result: Fast end-to-end execution (~6.16s)
+7. Run vla_standalone.py:
+   vla_standalone.py calls:
+   → vla/my_component/unified.prj/build/my_component_executable
+   
+   Result: ~6.16 seconds end-to-end ✅
+```
+
+### For Testing (Without Unified.prj)
+
+```
+1-4. Same as above (write kernel, Allo code, test)
+
+5. Run vla.py instead:
+   vla.py calls individual Allo kernels directly
+   Result: ~23 seconds end-to-end (slower)
+   
+   Use this when:
+   - Debugging individual kernels
+   - Don't need end-to-end optimization
+   - unified.prj not yet generated
 ```
 
 ---
