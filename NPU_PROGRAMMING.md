@@ -168,8 +168,11 @@ Generate unified.prj/test.cpp for [COMPONENT_NAME].
 
 Reference the Allo code at:
 - vla/[COMPONENT_NAME].py (main component code)
-- vla/[COMPONENT_NAME]/*.py (individual kernel mappings)
-- cc/bf16_vla/*.cc (kernel sources)
+
+OPTIMIZATION GOALS:
+- Single XRT launch for all kernels (not separate launches)
+- Keep intermediate data in NPU memory (zero DMA between kernels)
+- Reduce per-kernel overhead by combining into one executable
 
 Generate vla/[COMPONENT_NAME]/unified.prj/test.cpp that:
 1. Calls all kernels in the same order as the Allo code
@@ -181,26 +184,7 @@ After compiling, verify that unified.prj output EXACTLY matches
 the output from running individual Allo kernels.
 ```
 
-### Example
-
-If generating unified.prj for text encoder:
-
-```
-Generate unified.prj/test.cpp for text_encoder_bf16.
-
-Reference the Allo code at:
-- vla/text_encoder_bf16.py
-- vla/llama_block_rope_bf16.py
-- cc/bf16_vla/*.cc
-
-Generate vla/text_encoder_bf16/unified.prj/test.cpp that calls
-kernels in the same order as text_encoder_bf16.py, with intermediate
-data staying in NPU memory.
-
-CRITICAL: Verify output matches running individual Allo kernels.
-```
-
-**Step 6: Compile unified.prj**
+**Step 5: Compile unified.prj**
 
 ```bash
 cd [COMPONENT_PATH]/unified.prj
@@ -208,47 +192,13 @@ mkdir -p build && cd build
 cmake .. && make -j4
 ```
 
-**Step 7: Test unified.prj**
+**Step 6: Test unified.prj in End to End**
 
 ```bash
-# Run vla_standalone.py
+# Modify and Run vla_standalone.py
 cd vla
 python3 vla_standalone.py
-# Should complete in ~6.16 seconds (vs ~23 seconds with individual Allo kernels)
 ```
-
----
-
-## Allo Limitations & Why We Use Claude
-
-### Limitation 1: Per-Kernel Overhead
-
-**Allo generates:** Individual `.xclbin` for each kernel
-
-**Result:** Each kernel call = XRT launch = overhead (36 launches for 12 layers × 3 ops/layer)
-
-### Limitation 2: No Host Code Generation
-
-Allo generates AIE kernel code but NOT:
-- C++ main() function
-- Buffer management across multiple kernels
-- Kernel composition logic
-- Data flow orchestration for multiple kernels
-
-**Why:** Allo focuses on individual kernel compilation, not full-system integration.
-
-**Why Claude helps:** Claude writes the C++ "glue" code (unified.prj) that ties kernels together efficiently.
-
-### Limitation 3: Multi-Kernel Data Management
-
-Allo optimizes individual kernels but doesn't automatically:
-- Keep intermediate data in NPU memory between kernels
-- Minimize DMA transfers across kernel boundaries
-- Coordinate memory allocation for pipelined execution
-
-**Claude solution:** unified.prj manages these automatically by calling kernels in sequence without intermediate DMA.
-
----
 
 ## Summary: The Complete Workflow
 
@@ -284,36 +234,6 @@ Allo optimizes individual kernels but doesn't automatically:
    vla_standalone.py calls unified binary
    Result: ~6.16 seconds end-to-end ✅
 ```
-
-### Allo Programming (Without Unified.prj)
-
-```
-1-4. Same as above (write kernel, Allo code, test)
-
-5. Run vla.py to test end-to-end:
-   Example: vla/vla.py calls individual Allo kernels directly
-   Result: ~23 seconds end-to-end
-   
-   Use for:
-   - Verifying Allo code correctness
-   - Debugging individual kernel behavior
-   - Before generating unified.prj
-```
-
----
-
-## Key Takeaways
-
-| Concept | Details |
-|---------|---------|
-| **Allo Programming** | Write & test Allo code directly (easier, slower ~23s) |
-| **Unified.prj** | Claude-generated C++ combining kernels (faster ~6.16s) |
-| **Start with** | Allo programming (verify correctness) |
-| **Then optimize with** | Unified.prj (improve speed) |
-| **Prerequisites** | Allo kernels must be compiled and tested first |
-| **Example implementations** | vla.py (Allo), vla_standalone.py (unified.prj) |
-
----
 
 ## Resources
 
