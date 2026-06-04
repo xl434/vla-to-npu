@@ -215,7 +215,7 @@ class ActionExpertCrossBlock(nn.Module):
 # RMSNorm (bf16, width=768) — reuse existing kernel
 # ----------------------------------------------------------------
 norm = ExternalModule(
-    top="rms_norm_bf16",
+    top="rms_norm",  # The actual function name in rms_norm_bf16.cc
     impl_path=KERNEL_BF16_OLD_PATH + "rms_norm_bf16.cc",
     input_idx=[0, 1],
     output_idx=[2],
@@ -324,8 +324,8 @@ gemm_ffn_down_kernel, gemm_ffn_down_mp = GEMM(
 # Unmasked Softmax (bf16) — for cross-attention [32, 128]
 # ----------------------------------------------------------------
 softmax_cross_ext = ExternalModule(
-    top="softmax_bf16_32_128",
-    impl_path=KERNEL_BF16_OLD_PATH + "v2_softmax_bf16.cc",
+    top="softmax_128_bf16",  # Correct function name
+    impl_path=KERNEL_BF16_PATH + "softmax_128_bf16.cc",
     input_idx=[0],
     output_idx=[1],
 )
