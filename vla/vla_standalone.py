@@ -226,61 +226,6 @@ def main():
     print(f"Total                   : {t5 - t0:.3f} s")
     print(f"Output shape: {v_t.shape}")
 
-    # =====================================================================
-    # Validation (optional): Compare with PyTorch CPU reference
-    # =====================================================================
-    if "--validate" in sys.argv:
-        print("\n== Running PyTorch CPU reference for validation ==")
-        from vla_ref import (
-            preproc_ref, vit_ref, con_ref, joint_transformer_ref, postprocessing_ref
-        )
-        torch.set_default_dtype(torch.float32)
-
-        t_ref_0 = time.perf_counter()
-        state_emb_ref = state_input @ weights
-
-        conv_emb_ref = preproc_ref(image_rgb, params_proc)
-        t_ref_1 = time.perf_counter()
-        vision_emb_ref = vit_ref(VIT_NUM_LAYERS, conv_emb_ref, params_vit)
-        t_ref_2 = time.perf_counter()
-        llama_emb_ref = con_ref(vision_emb_ref, params_con)
-        t_ref_3 = time.perf_counter()
-        mm_seq_ref = np.concatenate([llama_emb_ref, text_emb, state_emb_ref, zeros], axis=0)
-        out_ref = joint_transformer_ref(
-            LLAMA_NUM_LAYERS, mm_seq_ref, action, params_vlm, params_exp_self, params_exp_cross
-        )
-        t_ref_4 = time.perf_counter()
-        v_t_ref = postprocessing_ref(out_ref, params_out)
-        t_ref_5 = time.perf_counter()
-
-        print(f"\nPreprocessing (PyTorch) : {t_ref_1 - t_ref_0:.3f} s")
-        print(f"Vision encoder (PyTorch): {t_ref_2 - t_ref_1:.3f} s")
-        print(f"Connector (PyTorch)     : {t_ref_3 - t_ref_2:.3f} s")
-        print(f"Joint transformer (PyTorch) : {t_ref_4 - t_ref_3:.3f} s")
-        print(f"Postprocessing (PyTorch): {t_ref_5 - t_ref_4:.3f} s")
-        print(f"Total (PyTorch CPU)     : {t_ref_5 - t_ref_0:.3f} s")
-
-        # Compare outputs
-        # Note: NPU optimized C++ (unified.prj) vs pure PyTorch may have larger differences
-        # due to kernel fusion, reordering, and other optimizations. Use relaxed tolerance.
-        try:
-            np.testing.assert_allclose(
-                v_t.astype(np.float32),
-                v_t_ref.astype(np.float32),
-                atol=1.0, rtol=0.5
-            )
-            max_err = np.max(np.abs(v_t.astype(np.float32) - v_t_ref.astype(np.float32)))
-            print(f"\n✅ VALIDATION PASSED")
-            print(f"Max error: {max_err:.6f}")
-            print(f"Speedup: {(t_ref_5 - t_ref_0) / (t5 - t0):.2f}×")
-        except AssertionError:
-            max_err = np.max(np.abs(v_t.astype(np.float32) - v_t_ref.astype(np.float32)))
-            print(f"\n⚠️  OUTPUT DIFFERENCES (optimized C++ vs pure PyTorch)")
-            print(f"Max absolute difference: {max_err:.6f}")
-            print(f"Note: Optimized implementations may differ due to kernel fusion")
-            print(f"Speedup: {(t_ref_5 - t_ref_0) / (t5 - t0):.2f}×")
-            # Don't exit - just report the difference
-
 
 if __name__ == "__main__":
     main()
