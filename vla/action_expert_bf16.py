@@ -568,8 +568,25 @@ def masked_softmax_cpu(scores_bf16):
 
 
 def unmasked_softmax_fn(score_per_head, weight_per_head):
-    """NPU unmasked softmax for cross-attention [32, 128] per head."""
-    softmax_cross_mod(score_per_head, weight_per_head)
+    """NPU unmasked softmax for cross-attention [32, 128] per head.
+
+    softmax_128_bf16 kernel expects [8][128] tiles, so process in chunks.
+    score_per_head: [32, 128], weight_per_head: [32, 128] output
+    """
+    SOFTMAX_TILE = 8
+    for row_start in range(0, SEQ, SOFTMAX_TILE):
+        row_end = min(row_start + SOFTMAX_TILE, SEQ)
+        row_len = row_end - row_start
+
+        # Extract and pad to [8, 128] if needed
+        score_tile = score_per_head[row_start:row_end, :]  # shape [row_len, 128]
+        if row_len < SOFTMAX_TILE:
+            # Pad with zeros to [8, 128]
+            score_tile = np.pad(score_tile, ((0, SOFTMAX_TILE - row_len), (0, 0)), mode='constant')
+
+        weight_tile = np.zeros((SOFTMAX_TILE, 128), dtype=NP_DTYPE)
+        softmax_cross_mod(score_tile.astype(NP_DTYPE), weight_tile)
+        weight_per_head[row_start:row_end, :] = weight_tile[:row_len, :]
 
 
 def _precompute_sin_cos(tile_rows, head_dim, max_wavelength, pos_offset):
