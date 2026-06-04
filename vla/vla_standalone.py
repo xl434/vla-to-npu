@@ -273,7 +273,7 @@ def main():
             print(f"\n✅ VALIDATION PASSED")
             print(f"Max error: {max_err:.6f}")
             print(f"Speedup: {(t_ref_5 - t_ref_0) / (t5 - t0):.2f}×")
-        except AssertionError as e:
+        except AssertionError:
             max_err = np.max(np.abs(v_t.astype(np.float32) - v_t_ref.astype(np.float32)))
             print(f"\n⚠️  OUTPUT DIFFERENCES (optimized C++ vs pure PyTorch)")
             print(f"Max absolute difference: {max_err:.6f}")
