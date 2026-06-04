@@ -83,9 +83,19 @@ python test_cosine.py
 
 ---
 
-## Running End-to-End VLA Model
+## End-to-End VLA Scripts
 
-The VLA implementation uses `vla_standalone.py` — an optimized inference pipeline that calls pre-compiled unified binaries directly, with zero build-time overhead.
+The `vla/` directory contains three VLA implementations:
+
+| File | Type | Speed | Use Case |
+|------|------|-------|----------|
+| **vla_standalone.py** | Optimized (C++ binaries) | ~6 seconds | **Use this for end-to-end inference** |
+| vla_cpp.py | Helper module | — | Used by vla_standalone.py; calls pre-built C++ executables |
+| vla.py | Python reference | ~23s (slow) | Educational reference; shows Python implementation before optimization |
+
+### Running End-to-End VLA Model
+
+The recommended script is `vla_standalone.py` — an optimized inference pipeline that calls pre-compiled unified binaries directly, with zero build-time overhead.
 
 ### Run Full Model (12L ViT + 12L Text + 16L Action)
 
@@ -104,17 +114,17 @@ cd vla
 python3 vla_standalone.py
 ```
 
-**Expected output (~7 seconds):**
+**Expected output (~6 seconds):**
 ```
 Running standalone VLA pipeline (no df.build())...
 
 == Timings (standalone, no rebuild) ==
 Preprocessing           : 0.18 s
-Vision encoder (12L)    : 2.58 s
+Vision encoder (12L)    : 2.51 s
 Connector               : 0.18 s
-Joint transformer (12L) : 3.74 s
-Postprocessing          : 0.07 s
-Total                   : 6.93 s
+Joint transformer (12L) : 3.21 s
+Postprocessing          : 0.08 s
+Total                   : 6.16 s
 ```
 
 ### Quick Test with Smaller Model
