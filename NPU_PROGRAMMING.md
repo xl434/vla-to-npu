@@ -157,31 +157,27 @@ python vla/my_component_bf16.py
 
 **Step 4: Ask Claude to generate unified.prj**
 
-Only after Allo kernels are tested and working, use this simple prompt:
+Only after Allo kernels are tested and working, use this prompt:
 
 ---
 
-### Claude Prompt (Simple)
+### Claude Prompt
 
 ```
 Generate unified.prj/test.cpp for [COMPONENT_NAME].
 
-Reference the Allo code at:
-- vla/[COMPONENT_NAME].py (main component code)
+Reference:
+- vla/[COMPONENT_NAME].py (Allo code)
+- UNIFIED_KERNEL_GUIDE.md (technical details on composing kernels)
 
 OPTIMIZATION GOALS:
 - Single XRT launch for all kernels (not separate launches)
 - Keep intermediate data in NPU memory (zero DMA between kernels)
-- Reduce per-kernel overhead by combining into one executable
 
-Generate vla/[COMPONENT_NAME]/unified.prj/test.cpp that:
-1. Calls all kernels in the same order as the Allo code
-2. Keeps intermediate data in NPU memory (no DMA between kernels)
-3. Uses the same input/output shapes as Allo code
+Generate vla/[COMPONENT_NAME]/unified.prj/test.cpp that composes
+all kernels following the patterns in UNIFIED_KERNEL_GUIDE.md.
 
-CRITICAL REQUIREMENT:
-After compiling, verify that unified.prj output EXACTLY matches 
-the output from running individual Allo kernels.
+CRITICAL: Verify output matches individual Allo kernel outputs.
 ```
 
 **Step 5: Compile unified.prj**
@@ -238,9 +234,10 @@ python3 vla_standalone.py
 ## Resources
 
 - **Allo documentation**: https://github.com/heterogeneous-computing-lab/allo
-- **Allo dataflow model**: See `/tribeca/.claude/skills/npu-kernel-gen/references/allo_docs/dataflow.rst`
-- **AIE API reference**: https://github.com/Xilinx/AI-Engine-Intrinsics
+- **Allo dataflow model**: https://cornell-zhang.github.io/allo/dive/dataflow.html
+- **AIE API reference**: https://download.amd.com/docnav/aiengine/xilinx2022_2/aiengine_api/aie_api/doc/index.html
+- **Unified kernel composition**: See `UNIFIED_KERNEL_GUIDE.md` (technical details for agents)
 - **Kernel examples**: `cc/bf16_vla/`
-- **Allo Python examples**: `vla/`
+- **Allo code examples**: `vla/`
 - **Unified.prj examples**: `vla/*/unified.prj/`
 - **Test examples**: `kernel_testing/*/test_*.py`
