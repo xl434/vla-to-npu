@@ -291,7 +291,7 @@ def preproc_ref(input: np.ndarray, params: dict):
     with torch.no_grad():
         out_torch = conv(input_torch)              # [1, 768, 32, 32]
     out_torch = out_torch.squeeze(0).flatten(1).transpose(0, 1)  # [1024, 768]
-    return out_torch
+    return out_torch.float().numpy().astype(np_bfloat16)
 
 
 def vit_ref(num_layers, input, params: dict):
@@ -306,7 +306,11 @@ def vit_ref(num_layers, input, params: dict):
     ref_model.ln_1.weight.data          = torch.tensor(params["W_norm_1"].astype(np.float32))
     ref_model.ln_2.weight.data          = torch.tensor(params["W_norm_2"].astype(np.float32))
     ref_model.to(torch.bfloat16)
-    input = torch.tensor(input.astype(np.float32)).unsqueeze(0).to(torch.bfloat16)
+    # Convert input to torch if needed
+    if isinstance(input, np.ndarray):
+        input = torch.tensor(input.astype(np.float32)).unsqueeze(0).to(torch.bfloat16)
+    else:
+        input = input.unsqueeze(0).to(torch.bfloat16)
     for _ in range(num_layers):
         with torch.no_grad():
             input = ref_model(input)
