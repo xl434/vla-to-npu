@@ -146,20 +146,6 @@ See [NPU_PROGRAMMING.md](NPU_PROGRAMMING.md) for how unified.prj is generated.
 
 ---
 
-## Model Configuration
-
-**Default:** 12-layer ViT + 12-layer text encoder + 16-layer action expert
-
-To adjust, edit `vla/vla_standalone.py`:
-
-```python
-VIT_NUM_LAYERS = 12        # Change to smaller for faster iteration
-LLAMA_NUM_LAYERS = 12      # Text encoder depth
-SKIP = 2                   # Action expert skip
-```
-
----
-
 ## What's Included
 
 ✅ 20+ optimized AIE kernels (SiLU, GELU, RMS Norm, GEMM, Flash Attention, etc.)  

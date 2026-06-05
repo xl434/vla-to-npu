@@ -1,10 +1,10 @@
 module {
-  func.func private @layer_norm_bf16(memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>)
+  func.func private @layer_norm(memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>)
   func.func @norm_no_bias_0(%arg0: memref<4x768xbf16>, %arg1: memref<768xbf16>, %arg2: !allo.stream<memref<4x768xbf16>, 1>) attributes {df.kernel, itypes = "___", otypes = "", stypes = "__o", tag = "norm_no_bias_()"} {
     %cst = arith.constant 0.000000e+00 : bf16
     %alloc = memref.alloc() {name = "tmp"} : memref<4x768xbf16>
     linalg.fill ins(%cst : bf16) outs(%alloc : memref<4x768xbf16>)
-    call @layer_norm_bf16(%arg0, %arg1, %alloc) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+    call @layer_norm(%arg0, %arg1, %alloc) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
     allo.stream_put(%arg2, [], %alloc) : !allo.stream<memref<4x768xbf16>, 1> contains memref<4x768xbf16>
     return
   }

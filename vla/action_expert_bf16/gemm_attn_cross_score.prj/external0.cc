@@ -5,15 +5,15 @@
 #include <stdlib.h>
 #include <type_traits>
 #include <aie_api/aie.hpp>
-#include "aie2/zero.cc"
 #include "aie2/add.cc"
+#include "aie2/zero.cc"
 #define DIM_M 32
-#define DIM_N 32
-#define DIM_K 32
+#define DIM_N 128
+#define DIM_K 64
 #define bf16_bf16_ONLY
 #define DIM_M 32
-#define DIM_N 32
-#define DIM_K 32
+#define DIM_N 128
+#define DIM_K 64
 #define bf16_bf16_ONLY
 //===- mm.cc ----------------------------------------------000---*- C++ -*-===//
 //
@@ -783,12 +783,12 @@ combos(matmul_vectorized_c_func) combos(matmul_scalar_c_func)
 } // extern "C"
 extern "C" {
 
-void fill_zeros_bf16_32_32_vector(bfloat16 *A) {
-  zero_vectorized<bfloat16, 32, 32>(A);
+void fill_zeros_bf16_32_128_vector(bfloat16 *A) {
+  zero_vectorized<bfloat16, 32, 128>(A);
 }
 
 void add_bf16_vector(bfloat16 *A_in, bfloat16 *B_in, bfloat16 *C_out) {
-  eltwise_vadd<bfloat16, bfloat16, 1024>(A_in, B_in, C_out);
+  eltwise_vadd<bfloat16, bfloat16, 4096>(A_in, B_in, C_out);
 }
 
 } // extern "C"

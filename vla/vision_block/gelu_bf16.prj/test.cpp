@@ -96,7 +96,7 @@ int main(int argc, const char *argv[]) {
 
   // kernel arguments
   unsigned int opcode = 3;
-  auto bo_in0 = xrt::bo(device, 98304 * sizeof(std::bfloat16_t),
+  auto bo_in0 = xrt::bo(device, 49152 * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   std::bfloat16_t *bufIn0 = bo_in0.map<std::bfloat16_t *>();
   std::vector<std::bfloat16_t> srcVec0;
@@ -108,16 +108,16 @@ int main(int argc, const char *argv[]) {
   ifile0.seekg(0, std::ios::end);
   auto ifile0_size = ifile0.tellg();
   ifile0.seekg(0, std::ios::beg);
-  if (ifile0_size != 98304 * sizeof(std::bfloat16_t)) {
+  if (ifile0_size != 49152 * sizeof(std::bfloat16_t)) {
     std::cerr << "Error: Invalid input file, byte number mismatch.\n";
     return 1;
   }
-  std::vector<std::bfloat16_t> vec0(98304);
-  ifile0.read(reinterpret_cast<char*>(vec0.data()), 98304 * sizeof(std::bfloat16_t));
+  std::vector<std::bfloat16_t> vec0(49152);
+  ifile0.read(reinterpret_cast<char*>(vec0.data()), 49152 * sizeof(std::bfloat16_t));
   srcVec0.insert(srcVec0.end(), vec0.begin(), vec0.end());
   memcpy(bufIn0, srcVec0.data(), (srcVec0.size() * sizeof(std::bfloat16_t)));
 
-  auto bo_out1 = xrt::bo(device, 98304 * sizeof(std::bfloat16_t),
+  auto bo_out1 = xrt::bo(device, 49152 * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   int tmp_trace_size = (trace_size > 0) ? trace_size : 1;
   auto bo_trace = xrt::bo(device, tmp_trace_size * 4, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(7));
@@ -175,7 +175,7 @@ int main(int argc, const char *argv[]) {
   bo_out1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
   std::bfloat16_t *bufOut1 = bo_out1.map<std::bfloat16_t *>();
   std::ofstream ofile1("output1.data", std::ios::binary);
-  ofile1.write(reinterpret_cast<const char*>(bufOut1 + 0), 98304 * sizeof(std::bfloat16_t));
+  ofile1.write(reinterpret_cast<const char*>(bufOut1 + 0), 49152 * sizeof(std::bfloat16_t));
   ofile1.close();
   if (trace_size > 0) {
     bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);

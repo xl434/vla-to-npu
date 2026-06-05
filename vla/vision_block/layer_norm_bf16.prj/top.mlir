@@ -1,6 +1,6 @@
 module {
   aie.device(npu1_4col) {
-    func.func private @layer_norm_bf16(memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>)
+    func.func private @layer_norm(memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>)
     func.func private @fill_zeros_bf16_4_768_vector(memref<4x768xbf16>)
     func.func private @add_bf16_vector(memref<4x768xbf16>, memref<4x768xbf16>, memref<4x768xbf16>)
     %shim_noc_tile_0_0 = aie.tile(0, 0)
@@ -47,9 +47,9 @@ module {
     aie.objectfifo @fifo_9(%mem_tile_3_1, {%tile_2_5}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
     aie.objectfifo @fifo_10(%mem_tile_3_1, {%tile_3_5}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
     aie.objectfifo @fifo_11(%shim_noc_tile_3_0, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<1x2x4x768xbf16>> 
-    aie.objectfifo @fifo_12(%mem_tile_0_1, {%tile_2_5, %tile_3_3, %tile_1_3, %tile_1_5, %tile_0_5, %tile_0_3, %tile_3_5, %tile_2_3}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
+    aie.objectfifo @fifo_12(%mem_tile_0_1, {%tile_3_5, %tile_3_3, %tile_1_5, %tile_2_3, %tile_0_5, %tile_0_3, %tile_2_5, %tile_1_3}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
     aie.objectfifo @fifo_13(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1x1x1x768xbf16>> 
-    aie.objectfifo @fifo_14(%mem_tile_0_1, {%tile_0_2, %tile_3_4, %tile_2_2, %tile_2_4, %tile_1_4, %tile_3_2, %tile_1_2, %tile_0_4}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
+    aie.objectfifo @fifo_14(%mem_tile_0_1, {%tile_3_2, %tile_0_4, %tile_1_2, %tile_1_4, %tile_2_2, %tile_2_4, %tile_3_4, %tile_0_2}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
     aie.objectfifo @fifo_15(%shim_noc_tile_1_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1x1x1x768xbf16>> 
     aie.objectfifo @fifo_16(%tile_0_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
     aie.objectfifo @fifo_17(%tile_1_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
@@ -101,7 +101,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_0(Produce, 1)
         aie.objectfifo.release @fifo_0(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
@@ -144,7 +144,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_1(Produce, 1)
         aie.objectfifo.release @fifo_1(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
@@ -163,7 +163,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_2(Produce, 1)
         aie.objectfifo.release @fifo_3(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
@@ -182,7 +182,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_3(Produce, 1)
         aie.objectfifo.release @fifo_4(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
@@ -201,7 +201,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_4(Produce, 1)
         aie.objectfifo.release @fifo_6(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
@@ -220,7 +220,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_5(Produce, 1)
         aie.objectfifo.release @fifo_7(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
@@ -239,7 +239,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_6(Produce, 1)
         aie.objectfifo.release @fifo_9(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
@@ -258,7 +258,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
         %4 = aie.objectfifo.acquire @fifo_12(Consume, 1) : !aie.objectfifosubview<memref<768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
-        func.call @layer_norm_bf16(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @layer_norm(%3, %5, %1) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @pipe_7(Produce, 1)
         aie.objectfifo.release @fifo_10(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)

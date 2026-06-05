@@ -13,50 +13,83 @@
 
 #define EPS 1e-5f // epsilon
 
-template <typename T_in, typename T_out, const int SEQ_LEN, const int HIDDEN>
-void layer_norm_single_batch_no_bias(T_in *input_tensor, T_in *weight,
-                                     T_out *output_tensor) {
+// bf16 -> float
+template <unsigned vec_factor>
+static inline aie::vector<float, vec_factor> bf16_to_float(aie::vector<bfloat16, vec_factor>& x_bf16) {
+  aie::vector<float, vec_factor> x;
+  for (int i = 0; i < vec_factor; i++) {
+      x[i] = (float)x_bf16[i];
+  }
+  return x;
+}
+
+// float -> bf16
+template <unsigned vec_factor>
+static inline aie::vector<bfloat16, vec_factor> float_to_bf16(aie::vector<float, vec_factor>& r) {
+  aie::vector<bfloat16, vec_factor> outv;
+    for (int i = 0; i < vec_factor; i++) {
+      outv[i] = (bfloat16)r[i];
+    }
+  return outv;
+}
+
+template <const int SEQ_LEN, const int HIDDEN>
+void layer_norm_single_batch_no_bias(bfloat16 *input_tensor, bfloat16 *weight,
+                                     bfloat16 *output_tensor) {
   constexpr int vec_factor = 16;
-  using vec_t = aie::vector<T_in, vec_factor>;
+  using bvec_t = aie::vector<bfloat16, vec_factor>;  // bf16 for load/store
+  using fvec_t = aie::vector<float,    vec_factor>;  // float for all math
+
   event0();
   for (int iter = 0; iter < SEQ_LEN; iter++) {
-    T_in *__restrict input_ptr = input_tensor;
-    T_in *__restrict weight_ptr = weight;
-    T_out *__restrict output_ptr = output_tensor;
-    float mean_f = 0.0f, variance_sum_f = 0.0f;
+    bfloat16 *__restrict input_ptr  = input_tensor;
+    bfloat16 *__restrict weight_ptr = weight;
+    bfloat16 *__restrict output_ptr = output_tensor;
+
     const int F = HIDDEN / vec_factor;
+
+    float mean = 0.0f;
     for (int i = 0; i < F; i++) {
-      vec_t input_vec = aie::load_v<vec_factor>(input_ptr);
+      bvec_t input_bf16 = aie::load_v<vec_factor>(input_ptr);
       input_ptr += vec_factor;
-      aie::accum<accfloat, vec_factor> acc = aie::mul(input_vec, (bfloat16)1.0f);
-      mean_f += aie::reduce_add(acc.to_vector<float>());
+      fvec_t input_f = bf16_to_float(input_bf16);  // ← load bf16, compute in float
+      mean += aie::reduce_add(input_f);
     }
-    mean_f /= HIDDEN;
-    input_ptr = input_tensor;
-    bfloat16 mean = (bfloat16)mean_f;
-    for (int i = 0; i < F; i++) {
-      vec_t input_vec = aie::load_v<vec_factor>(input_ptr);
-      input_ptr += vec_factor;
-      vec_t diff = aie::sub(input_vec, mean);
-      aie::accum<accfloat, vec_factor> diff_acc = aie::mul(diff, diff);
-      variance_sum_f += aie::reduce_add(diff_acc.to_vector<float>());
-    }
-    float inv_std_f = variance_sum_f / HIDDEN + EPS;
-    vec_t variance_vec =
-        aie::broadcast<T_in, vec_factor>((bfloat16)inv_std_f);
-    vec_t rms = aie::invsqrt(variance_vec);
+    mean /= HIDDEN;
+    fvec_t mean_vec = aie::broadcast<float, vec_factor>(mean);
+
+    float variance_sum = 0.0f;
     input_ptr = input_tensor;
     for (int i = 0; i < F; i++) {
-      vec_t input_vec = aie::load_v<vec_factor>(input_ptr);
+      bvec_t input_bf16 = aie::load_v<vec_factor>(input_ptr);
       input_ptr += vec_factor;
-      vec_t normed = aie::mul(aie::sub(input_vec, mean), rms);
-      vec_t weight_vec = aie::load_v<vec_factor>(weight_ptr);
+      fvec_t input_f = bf16_to_float(input_bf16);
+      fvec_t diff       = aie::sub(input_f, mean_vec);
+      fvec_t square_vec = aie::mul(diff, diff);
+      variance_sum += aie::reduce_add(square_vec);
+    }
+    fvec_t variance_vec = aie::broadcast<float, vec_factor>(variance_sum / HIDDEN + EPS);
+    fvec_t inv_std      = aie::invsqrt(variance_vec);
+
+    input_ptr = input_tensor;
+    for (int i = 0; i < F; i++) {
+      bvec_t input_bf16  = aie::load_v<vec_factor>(input_ptr);
+      input_ptr  += vec_factor;
+      bvec_t weight_bf16 = aie::load_v<vec_factor>(weight_ptr);
       weight_ptr += vec_factor;
-      vec_t result = aie::mul(normed, weight_vec);
-      aie::store_v(output_ptr, result);
+
+      fvec_t input_f  = bf16_to_float(input_bf16);
+      fvec_t weight_f = bf16_to_float(weight_bf16);
+
+      fvec_t normed = aie::mul(aie::sub(input_f, mean_vec), inv_std);
+      fvec_t result = aie::mul(normed, weight_f);
+
+      bvec_t result_bf16 = float_to_bf16(result);  // convert back before store
+      aie::store_v(output_ptr, result_bf16);
       output_ptr += vec_factor;
     }
-    input_tensor += HIDDEN;
+
+    input_tensor  += HIDDEN;
     output_tensor += HIDDEN;
   }
   event1();
@@ -64,76 +97,12 @@ void layer_norm_single_batch_no_bias(T_in *input_tensor, T_in *weight,
 
 extern "C" {
 
-void layer_norm_bf16(bfloat16 A_in[4][768], bfloat16 B_in[768], bfloat16 C_out[4][768]) {
-  layer_norm_single_batch_no_bias<bfloat16, bfloat16, 4, 768>(&A_in[0][0], B_in,
-                                                              &C_out[0][0]);
+void layer_norm(bfloat16 A_in[4][768], bfloat16 B_in[768], bfloat16 C_out[4][768]) {
+  layer_norm_single_batch_no_bias<4, 768>(&A_in[0][0], B_in, &C_out[0][0]);
+}
+
+void layer_norm_small(bfloat16 A_in[4][192], bfloat16 B_in[192], bfloat16 C_out[4][192]) {
+  layer_norm_single_batch_no_bias<4, 192>(&A_in[0][0], B_in, &C_out[0][0]);
 }
 
 } // extern "C"
-
-
-// // bf16 layer norm: loads bf16, accumulates mean/var in float32, stores bf16.
-// // Weight is also bf16.
-// template <const int SEQ_LEN, const int HIDDEN>
-// void layer_norm_bf16_impl(bfloat16 *input_tensor, bfloat16 *weight,
-//                           bfloat16 *output_tensor) {
-//   constexpr int vec_factor = 32; // 32 bf16 elements per vector
-//   using vec_bf16 = aie::vector<bfloat16, vec_factor>;
-//   constexpr int F = HIDDEN / vec_factor;
-
-//   for (int iter = 0; iter < SEQ_LEN; iter++) {
-//     bfloat16 *__restrict input_ptr = input_tensor;
-//     bfloat16 *__restrict weight_ptr = weight;
-//     bfloat16 *__restrict output_ptr = output_tensor;
-
-//     // Pass 1: compute mean (accumulate in float32)
-//     float mean = 0.0f;
-//     for (int i = 0; i < F; i++) {
-//       vec_bf16 input_vec = aie::load_v<vec_factor>(input_ptr);
-//       input_ptr += vec_factor;
-//       // reduce_add on bf16 vector, accumulate in float
-//       mean += aie::reduce_add(input_vec);
-//     }
-//     mean /= HIDDEN;
-
-//     // Pass 2: compute variance (accumulate in float32)
-//     input_ptr = input_tensor;
-//     float variance_sum = 0.0f;
-//     for (int i = 0; i < F; i++) {
-//       vec_bf16 input_vec = aie::load_v<vec_factor>(input_ptr);
-//       input_ptr += vec_factor;
-//       vec_bf16 diff = aie::sub(input_vec, (bfloat16)mean);
-//       vec_bf16 square_vec = aie::mul(diff, diff);
-//       variance_sum += aie::reduce_add(square_vec);
-//     }
-
-//     // Compute 1/sqrt(var + eps) using float, then broadcast as bf16
-//     float inv_std_f = 1.0f / sqrtf(variance_sum / HIDDEN + EPS);
-//     bfloat16 inv_std = (bfloat16)inv_std_f;
-//     bfloat16 mean_bf16 = (bfloat16)mean;
-
-//     // Pass 3: normalize and apply weight
-//     input_ptr = input_tensor;
-//     for (int i = 0; i < F; i++) {
-//       vec_bf16 input_vec = aie::load_v<vec_factor>(input_ptr);
-//       input_ptr += vec_factor;
-//       vec_bf16 normed = aie::mul(aie::sub(input_vec, mean_bf16), inv_std);
-//       vec_bf16 weight_vec = aie::load_v<vec_factor>(weight_ptr);
-//       weight_ptr += vec_factor;
-//       vec_bf16 result = aie::mul(normed, weight_vec);
-//       aie::store_v(output_ptr, result);
-//       output_ptr += vec_factor;
-//     }
-//     input_tensor += HIDDEN;
-//     output_tensor += HIDDEN;
-//   }
-// }
-
-// extern "C" {
-
-// void layer_norm_bf16(bfloat16 A_in[4][768], bfloat16 B_in[768],
-//                      bfloat16 C_out[4][768]) {
-//   layer_norm_bf16_impl<4, 768>(&A_in[0][0], B_in, &C_out[0][0]);
-// }
-
-// } // extern "C"

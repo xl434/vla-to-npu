@@ -1,6 +1,6 @@
 module {
   aie.device(npu1_4col) {
-    func.func private @rms_norm_bf16(memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>)
+    func.func private @rms_norm(memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>)
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     %shim_noc_tile_1_0 = aie.tile(1, 0)
     %shim_noc_tile_2_0 = aie.tile(2, 0)
@@ -29,7 +29,7 @@ module {
     aie.objectfifo @fifo_9(%mem_tile_3_1, {%tile_3_2}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
     aie.objectfifo @fifo_10(%mem_tile_3_1, {%tile_3_3}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
     aie.objectfifo @fifo_11(%shim_noc_tile_3_0, {%mem_tile_3_1}, 2 : i32) : !aie.objectfifo<memref<1x2x4x768xbf16>> 
-    aie.objectfifo @fifo_12(%mem_tile_0_1, {%tile_2_3, %tile_0_3, %tile_2_2, %tile_3_3, %tile_0_2, %tile_1_3, %tile_3_2, %tile_1_2}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
+    aie.objectfifo @fifo_12(%mem_tile_0_1, {%tile_2_2, %tile_2_3, %tile_3_2, %tile_1_3, %tile_0_3, %tile_3_3, %tile_1_2, %tile_0_2}, 2 : i32) : !aie.objectfifo<memref<768xbf16>> 
     aie.objectfifo @fifo_13(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1x1x1x768xbf16>> 
     aie.objectfifo @fifo_14(%tile_0_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
     aie.objectfifo @fifo_15(%tile_0_3, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<4x768xbf16>> 
@@ -63,7 +63,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_14(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_0(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_14(Produce, 1)
@@ -81,7 +81,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_15(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_1(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_15(Produce, 1)
@@ -99,7 +99,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_17(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_3(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_17(Produce, 1)
@@ -117,7 +117,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_18(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_4(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_18(Produce, 1)
@@ -135,7 +135,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_20(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_6(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_20(Produce, 1)
@@ -153,7 +153,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_21(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_7(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_21(Produce, 1)
@@ -171,7 +171,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_23(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_9(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_23(Produce, 1)
@@ -189,7 +189,7 @@ module {
         %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<768xbf16>> -> memref<768xbf16>
         %4 = aie.objectfifo.acquire @fifo_24(Produce, 1) : !aie.objectfifosubview<memref<4x768xbf16>>
         %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<4x768xbf16>> -> memref<4x768xbf16>
-        func.call @rms_norm_bf16(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
+        func.call @rms_norm(%1, %3, %5) : (memref<4x768xbf16>, memref<768xbf16>, memref<4x768xbf16>) -> ()
         aie.objectfifo.release @fifo_10(Consume, 1)
         aie.objectfifo.release @fifo_12(Consume, 1)
         aie.objectfifo.release @fifo_24(Produce, 1)

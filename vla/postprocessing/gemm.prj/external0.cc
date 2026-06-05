@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <type_traits>
 #include <aie_api/aie.hpp>
-#include "aie2/zero.cc"
 #include "aie2/add.cc"
+#include "aie2/zero.cc"
 #define DIM_M 32
 #define DIM_N 32
 #define DIM_K 64

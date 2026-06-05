@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <type_traits>
 #include <aie_api/aie.hpp>
-#include "v2_softmax_bf16_.cc"
+#include "softmax_128_bf16_.cc"
 
 extern "C" {
 

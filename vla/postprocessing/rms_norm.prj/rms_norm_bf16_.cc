@@ -1,7 +1,8 @@
+
 /*
- * Copyright Allo authors. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
+* Copyright Allo authors. All Rights Reserved.
+* SPDX-License-Identifier: Apache-2.0
+*/
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
@@ -11,56 +12,55 @@
 
 #define NOCPP
 
-#define EPS 1e-5f // epsilon
+#define EPS 1e-6f // epsilon
 
-template <typename T_in, typename T_out, const int SEQ_LEN, const int HIDDEN>
-void rms_norm_single_batch_bf16(T_in *input_tensor, T_in *weight,
-                                T_out *output_tensor) {
-  constexpr int vec_factor = 16;
-  using vec_t = aie::vector<T_in, vec_factor>;
-  event0();
-  for (int iter = 0; iter < SEQ_LEN; iter++) {
-    T_in *__restrict input_ptr = input_tensor;
-    T_in *__restrict weight_ptr = weight;
-    T_out *__restrict output_ptr = output_tensor;
-    float square_sum_f = 0.0f;
-    const int F = HIDDEN / vec_factor;
-    // Pass 1: compute sum of squares in float32 for precision
-    for (int i = 0; i < F; i++) {
-      vec_t input_vec = aie::load_v<vec_factor>(input_ptr);
-      input_ptr += vec_factor;
-      aie::accum<accfloat, vec_factor> sq_acc = aie::mul(input_vec, input_vec);
-      square_sum_f += aie::reduce_add(sq_acc.to_vector<float>());
+template <const int SEQ_LEN, const int HIDDEN>
+void rms_norm_single_batch(bfloat16 *input_tensor, bfloat16 *weight,
+                        bfloat16 *output_tensor) {
+    constexpr int vec_factor = 32;
+    using vec_t = aie::vector<bfloat16, vec_factor>;
+    
+    event0();
+    for (int iter = 0; iter < SEQ_LEN; iter++) {
+        bfloat16 *__restrict input_ptr = input_tensor;
+        bfloat16 *__restrict weight_ptr = weight;
+        bfloat16 *__restrict output_ptr = output_tensor;
+        float square_sum = 0.0f;
+        const int F = HIDDEN / vec_factor;
+        for (int i = 0; i < F; i++) {
+        vec_t input_vec = aie::load_v<vec_factor>(input_ptr);
+        input_ptr += vec_factor;
+        vec_t square_vec = aie::mul(input_vec, input_vec);
+        square_sum += aie::reduce_add(square_vec);
+        }
+        vec_t square_sum_vec =
+            aie::broadcast<bfloat16, vec_factor>(square_sum / HIDDEN + EPS);
+        vec_t rms = aie::invsqrt(square_sum_vec);
+        input_ptr = input_tensor;
+        for (int i = 0; i < F; i++) {
+        vec_t input_vec = aie::load_v<vec_factor>(input_ptr);
+        input_ptr += vec_factor;
+        vec_t normed = aie::mul(input_vec, rms);
+        vec_t weight_vec = aie::load_v<vec_factor>(weight_ptr);
+        weight_ptr += vec_factor;
+        vec_t result = aie::mul(normed, weight_vec);
+        aie::store_v(output_ptr, result);
+        output_ptr += vec_factor;
+        }
+        input_tensor += HIDDEN;
+        output_tensor += HIDDEN;
     }
-    // Compute 1/sqrt(mean(x^2) + eps)
-    float inv_rms_f = square_sum_f / HIDDEN + EPS;
-    vec_t rms_vec =
-        aie::broadcast<T_in, vec_factor>((bfloat16)inv_rms_f);
-    vec_t rms = aie::invsqrt(rms_vec);
-    // Pass 2: normalize and apply weight
-    input_ptr = input_tensor;
-    for (int i = 0; i < F; i++) {
-      vec_t input_vec = aie::load_v<vec_factor>(input_ptr);
-      input_ptr += vec_factor;
-      vec_t normed = aie::mul(input_vec, rms);
-      vec_t weight_vec = aie::load_v<vec_factor>(weight_ptr);
-      weight_ptr += vec_factor;
-      vec_t result = aie::mul(normed, weight_vec);
-      aie::store_v(output_ptr, result);
-      output_ptr += vec_factor;
-    }
-    input_tensor += HIDDEN;
-    output_tensor += HIDDEN;
-  }
-  event1();
+    event1();
 }
 
 extern "C" {
 
-void rms_norm_bf16(bfloat16 A_in[4][768], bfloat16 B_in[768],
-                   bfloat16 C_out[4][768]) {
-  rms_norm_single_batch_bf16<bfloat16, bfloat16, 4, 768>(
-      &A_in[0][0], B_in, &C_out[0][0]);
+void rms_norm(bfloat16 A_in[4][768], bfloat16 B_in[768], bfloat16 C_out[4][768]) {
+rms_norm_single_batch<4, 768>(&A_in[0][0], B_in, &C_out[0][0]);
+}
+
+void rms_norm_small(bfloat16 A_in[4][192], bfloat16 B_in[192], bfloat16 C_out[4][192]) {
+rms_norm_single_batch<4, 192>(&A_in[0][0], B_in, &C_out[0][0]);
 }
 
 } // extern "C"

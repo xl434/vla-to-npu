@@ -110,7 +110,7 @@ Claude generates a single C++ executable that:
 **Example locations:**
 - `vla/text_encoder_bf16/unified.prj/test.cpp` — Text encoder (12 layers)
 - `vla/vision_block/unified.prj/test.cpp` — Vision encoder (12 layers)
-- `vla/action_expert_bf16/unified.prj/test.cpp` — Action expert (16 layers)
+- `vla/action_expert_bf16/unified.prj/test.cpp` — Action expert
 
 **Benefits:**
 - ✅ Single XRT launch per component (vs 36 for 12 layers × 3 ops/layer)
