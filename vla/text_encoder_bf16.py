@@ -398,17 +398,17 @@ def rope_fused_5h_region(x:       Ty_rope[ROPE_CHUNK * ROPE_FUSED_TILE, HEAD_DIM
 # ##############################################################
 os.environ["ENABLE_AGGRESSIVE_PORT_UTILIZATION_PATCH"] = "1"
 
-# Skip rebuild — xclbin files already exist
-rms_norm_mod = None
-gemm_q_mod = None
-gemm_kv_mod = None
-gemm_out_mod = None
-gemm_attn_score_mod = None
-gemm_attn_value_mod = None
-gemm_ffn_up_mod = None
-gemm_ffn_down_mod = None
-softmax_mod = None
-silu_mod = None
+# Build all modules
+rms_norm_mod = df.build(rms_norm_kernel, target="aie", project="text_encoder_bf16/rms_norm.prj")
+gemm_q_mod = df.build(gemm_q_kernel, project="text_encoder_bf16/gemm_q.prj", target="aie", mapping_primitives=gemm_q_mp)
+gemm_kv_mod = df.build(gemm_kv_kernel, project="text_encoder_bf16/gemm_kv.prj", target="aie", mapping_primitives=gemm_kv_mp)
+gemm_out_mod = df.build(gemm_out_kernel, project="text_encoder_bf16/gemm_out.prj", target="aie", mapping_primitives=gemm_out_mp)
+gemm_attn_score_mod = df.build(gemm_attn_score_kernel, project="text_encoder_bf16/gemm_attn_score.prj", target="aie", mapping_primitives=gemm_attn_score_mp)
+gemm_attn_value_mod = df.build(gemm_attn_value_kernel, project="text_encoder_bf16/gemm_attn_value.prj", target="aie", mapping_primitives=gemm_attn_value_mp)
+gemm_ffn_up_mod = df.build(gemm_ffn_up_kernel, project="text_encoder_bf16/gemm_ffn_up.prj", target="aie", mapping_primitives=gemm_ffn_up_mp)
+gemm_ffn_down_mod = df.build(gemm_ffn_down_kernel, project="text_encoder_bf16/gemm_ffn_down.prj", target="aie", mapping_primitives=gemm_ffn_down_mp)
+softmax_mod = df.build(softmax_kernel, target="aie", project="text_encoder_bf16/softmax.prj")
+silu_mod = df.build(silu_kernel, target="aie", project="text_encoder_bf16/silu.prj")
 
 # Legacy decomposed RoPE builds commented out, replaced by rope_fused_mod
 # radians_mod = df.build(radians_region, target="aie", project="text_encoder_bf16/rope/radians.prj")
@@ -420,9 +420,8 @@ silu_mod = None
 # mul32_mod = df.build(mul32_region, target="aie", project="text_encoder_bf16/rope/mul32.prj")
 # add32_mod = df.build(add32_region, target="aie", project="text_encoder_bf16/rope/add32.prj")
 # sub32_mod = df.build(sub32_region, target="aie", project="text_encoder_bf16/rope/sub32.prj")
-# Skip rebuild — xclbin files already exist
-rope_fused_mod = None
-rope_fused_5h_mod = None
+rope_fused_mod = df.build(rope_fused_region, target="aie", project="text_encoder_bf16/rope/fused.prj")
+rope_fused_5h_mod = df.build(rope_fused_5h_region, target="aie", project="text_encoder_bf16/rope/fused_5h.prj")
 
 
 # ##############################################################
